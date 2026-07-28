@@ -208,8 +208,17 @@ div[data-testid="stSidebar"] [data-testid="stSidebarContent"],
 div[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {{
   background: transparent !important;
 }}
-div[data-testid="stSidebar"] * {{ color:#FFFFFF !important; }}
+section[data-testid="stSidebar"] *, div[data-testid="stSidebar"] * {{ color:#FFFFFF !important; }}
+section[data-testid="stSidebar"] .stCaption, section[data-testid="stSidebar"] small,
 div[data-testid="stSidebar"] .stCaption, div[data-testid="stSidebar"] small {{ color:#AFC2E8 !important; }}
+section[data-testid="stSidebar"] label, section[data-testid="stSidebar"] label p,
+section[data-testid="stSidebar"] [data-testid="stWidgetLabel"],
+section[data-testid="stSidebar"] [data-testid="stWidgetLabel"] p {{ color:#FFFFFF !important; }}
+/* 白底输入控件保持深色字 */
+section[data-testid="stSidebar"] input,
+section[data-testid="stSidebar"] [data-baseweb="select"] *,
+section[data-testid="stSidebar"] [data-baseweb="select"] input,
+section[data-testid="stSidebar"] [data-baseweb="popover"] * {{ color:{INK} !important; }}
 div[data-testid="stSidebar"] .stButton > button {{
   background: rgba(255,255,255,.08); border: 1px solid rgba(201,162,39,.45);
   color: #FFFFFF !important; border-radius: 11px; transition: all .2s ease; font-weight:500;
@@ -273,6 +282,85 @@ INDUSTRY_FEATURE = {
     "贵金属": {"macro": ["美联储降息预期升温", "实际利率下行", "地缘风险抬升避险需求"],
              "industry": ["全球央行连续购金", "矿产供给刚性", "金价屡创新高"],
              "view": "美元信用体系松动叠加降息周期，黄金中长期牛市格局确立，铜金共振。"},
+}
+
+# Screen 候选池（含四维特征与 LLM 综合评分，源自《Fin Synagent (9)》Screen 流程）
+CANDIDATES = {
+    "白酒": [
+        {"name": "贵州茅台", "code": "600519.SH", "pe": 27.4, "pb": 9.5, "roe": 32.1, "rev": 15.8,
+         "trend": "上升趋势", "ma": "MA20 > MA60", "vol": "低波动", "macd": "金叉",
+         "sent": (0.78, 0.08, 0.14), "score": 91.2},
+        {"name": "五粮液", "code": "000858.SZ", "pe": 17.8, "pb": 4.1, "roe": 24.5, "rev": 11.2,
+         "trend": "震荡向上", "ma": "MA20 > MA60", "vol": "中波动", "macd": "金叉",
+         "sent": (0.71, 0.11, 0.18), "score": 86.7},
+        {"name": "泸州老窖", "code": "000568.SZ", "pe": 15.2, "pb": 4.4, "roe": 28.7, "rev": 13.5,
+         "trend": "横盘整理", "ma": "MA20 ≈ MA60", "vol": "中波动", "macd": "粘合",
+         "sent": (0.64, 0.15, 0.21), "score": 84.3},
+        {"name": "山西汾酒", "code": "600809.SH", "pe": 19.6, "pb": 5.8, "roe": 26.3, "rev": 16.9,
+         "trend": "横盘整理", "ma": "MA20 < MA60", "vol": "高波动", "macd": "死叉",
+         "sent": (0.58, 0.19, 0.23), "score": 82.5},
+        {"name": "洋河股份", "code": "002304.SZ", "pe": 13.9, "pb": 2.9, "roe": 20.4, "rev": 6.7,
+         "trend": "弱势整理", "ma": "MA20 < MA60", "vol": "中波动", "macd": "死叉",
+         "sent": (0.52, 0.22, 0.26), "score": 80.1},
+    ],
+    "红利": [
+        {"name": "中国神华", "code": "601088.SH", "pe": 12.6, "pb": 1.9, "roe": 15.2, "rev": 3.1,
+         "trend": "上升趋势", "ma": "MA20 > MA60", "vol": "低波动", "macd": "金叉",
+         "sent": (0.74, 0.09, 0.17), "score": 90.5},
+        {"name": "长江电力", "code": "600900.SH", "pe": 21.3, "pb": 3.1, "roe": 14.8, "rev": 8.4,
+         "trend": "上升趋势", "ma": "MA20 > MA60", "vol": "低波动", "macd": "金叉",
+         "sent": (0.72, 0.10, 0.18), "score": 88.9},
+        {"name": "工商银行", "code": "601398.SH", "pe": 6.1, "pb": 0.7, "roe": 10.6, "rev": 1.2,
+         "trend": "震荡向上", "ma": "MA20 > MA60", "vol": "低波动", "macd": "金叉",
+         "sent": (0.66, 0.12, 0.22), "score": 85.4},
+        {"name": "陕西煤业", "code": "601225.SH", "pe": 11.4, "pb": 2.3, "roe": 20.1, "rev": -2.3,
+         "trend": "横盘整理", "ma": "MA20 ≈ MA60", "vol": "中波动", "macd": "粘合",
+         "sent": (0.59, 0.17, 0.24), "score": 83.8},
+        {"name": "宁沪高速", "code": "600377.SH", "pe": 12.8, "pb": 1.6, "roe": 12.4, "rev": 5.6,
+         "trend": "横盘整理", "ma": "MA20 ≈ MA60", "vol": "低波动", "macd": "粘合",
+         "sent": (0.55, 0.18, 0.27), "score": 81.2},
+    ],
+    "贵金属": [
+        {"name": "紫金矿业", "code": "601899.SH", "pe": 16.9, "pb": 3.8, "roe": 22.6, "rev": 18.3,
+         "trend": "上升趋势", "ma": "MA20 > MA60", "vol": "中波动", "macd": "金叉",
+         "sent": (0.81, 0.07, 0.12), "score": 91.8},
+        {"name": "山东黄金", "code": "600547.SH", "pe": 38.2, "pb": 5.1, "roe": 13.4, "rev": 21.7,
+         "trend": "上升趋势", "ma": "MA20 > MA60", "vol": "中波动", "macd": "金叉",
+         "sent": (0.75, 0.10, 0.15), "score": 87.3},
+        {"name": "中金黄金", "code": "600489.SH", "pe": 22.7, "pb": 2.6, "roe": 11.2, "rev": 12.5,
+         "trend": "震荡向上", "ma": "MA20 > MA60", "vol": "中波动", "macd": "金叉",
+         "sent": (0.68, 0.13, 0.19), "score": 84.9},
+        {"name": "赤峰黄金", "code": "600988.SH", "pe": 25.4, "pb": 3.2, "roe": 12.8, "rev": 15.1,
+         "trend": "横盘整理", "ma": "MA20 ≈ MA60", "vol": "高波动", "macd": "粘合",
+         "sent": (0.61, 0.16, 0.23), "score": 82.6},
+        {"name": "银泰黄金", "code": "000975.SZ", "pe": 20.8, "pb": 2.4, "roe": 11.6, "rev": 9.8,
+         "trend": "弱势整理", "ma": "MA20 < MA60", "vol": "中波动", "macd": "死叉",
+         "sent": (0.54, 0.20, 0.26), "score": 80.4},
+    ],
+}
+
+# RAG 模拟检索片段（源自文档：券商研报 / 协会报告 / 财报）
+RAG_CHUNKS = {
+    "白酒": [
+        ("券商白酒深度研报：库存周期与批价跟踪", 0.923, "渠道库存去化至 1.5-2 个月良性区间，飞天批价站稳 2200 元上方……"),
+        ("中酒协行业报告：二季度终端动销调研", 0.887, "宴席与商务场景修复明显，次高端以下价位带动销环比改善……"),
+        ("头部酒企财报：茅台 / 五粮液 2026Q2", 0.851, "直销占比提升带动吨价上行，分红率维持高位，现金流充沛……"),
+    ],
+    "红利": [
+        ("券商红利策略专题：股息率与利率利差", 0.917, "中证红利股息率约 5.2%，与 10Y 国债利差处于历史高位……"),
+        ("央国企分红政策汇编：市值管理指引", 0.879, "鼓励提高分红频次与比例，多家央企承诺分红率 70% 以上……"),
+        ("公用事业 / 煤炭年报：现金流与分红覆盖", 0.842, "经营现金流对分红覆盖率 1.5 倍以上，长协机制平滑周期……"),
+    ],
+    "贵金属": [
+        ("券商贵金属中期策略：金铜共振", 0.928, "美联储降息周期开启，实际利率下行，金价中枢上移……"),
+        ("世界黄金协会：全球央行购金季报", 0.895, "全球央行连续 30 个月净购金，新兴市场央行增持显著……"),
+        ("头部矿企财报：紫金 / 山金产量指引", 0.858, "矿产金产量三年复合增速超 20%，资源储备持续扩张……"),
+    ],
+    "default": [
+        ("券商 A 股中期策略：哑铃配置", 0.876, "高股息防御 + 景气成长进攻，底部区域分批布局……"),
+        ("货币政策执行报告（季度）", 0.842, "保持流动性合理充裕，引导实体融资成本下行……"),
+        ("资本市场改革文件汇编", 0.815, "市值管理、分红回购新政持续落地，夯实市场底部……"),
+    ],
 }
 
 CONSULT_SCRIPT = {
@@ -523,7 +611,16 @@ def run_workflow(query: str, decomp_level: int):
     with st.expander("🙋 人机协同 · 对拆解任务进行补充（可选）"):
         st.text_input("输入您希望补充的分析方向，专家将一并考虑：", key=f"supp_{time.time()}")
 
-    with st.status("🎓 **专家智能体（Spark4.0 Ultra）** · 正在基于知识库生成专业回答…", expanded=True) as s:
+    # RAG 知识库检索
+    rag_key = next((k for k in ["白酒", "红利", "贵金属"] if k in query), "default")
+    with st.status("📚 **知识库检索（RAG）** · 正在检索行业知识库…", expanded=True) as s:
+        time.sleep(0.6)
+        st.write("**检索流程**：语义段落切分（Semantic Chunking）→ 星火 Embedding 向量化 → Chroma 向量库 → 查询向量化 → 余弦相似度 Top-K 检索 → Prompt 拼接")
+        for title, score, snippet in RAG_CHUNKS[rag_key]:
+            st.markdown(f'<div class="src">📄 <b>{title}</b> · 相似度 <b>{score:.3f}</b><br><span style="color:#4A6A56;">{snippet}</span></div>', unsafe_allow_html=True)
+        s.update(label="📚 **知识库检索（RAG）** · 命中 Top-3 高相关片段，已注入专家提示词", state="complete")
+
+    with st.status("🎓 **专家智能体（Spark4.0 Ultra）** · 正在基于检索片段生成专业回答…", expanded=True) as s:
         time.sleep(0.8)
         ph = st.empty()
         spark_stream(script["expert_answer"], ph, speed=0.006)
@@ -622,27 +719,78 @@ def page_screen():
     st.markdown(f"**当前方案**：行业 = `{industry}` · 风险偏好 = `{risk}` · 数据源 = qstock 行情 / 财务报告 / 时讯情感（glm-4-flash 分类）")
 
     if run:
-        with st.status("🌳 **筛选树推理** · 正在沿『宏观 → 行业 → 个股』路径筛选特征…", expanded=True) as s:
+        pool = CANDIDATES[industry]
+
+        with st.status("🧭 **Screen Agent** · 正在解析投资意图…", expanded=True) as s:
+            time.sleep(0.7)
+            st.json({"sector": industry,
+                     "risk_preference": {"保守型": "low", "稳健型": "medium", "积极型": "high"}[risk],
+                     "objective": "capital_appreciation" if risk == "积极型" else "stable_income",
+                     "source": "qstock 行情 / 财务报告 / 时讯新闻"})
+            s.update(label="🧭 **Screen Agent** · 意图解析完成，已生成结构化筛选条件", state="complete")
+
+        with st.status("🏗️ **股票池构建** · 正在从行业板块过滤候选标的…", expanded=True) as s:
+            time.sleep(0.7)
+            st.write(f"行业过滤：`{industry}` 子行业 → 基础过滤：市值 > 500 亿、日均成交 > 1 亿、非 ST → 候选池 **{len(pool)} 支**")
+            st.dataframe(pd.DataFrame([{"股票": c["name"], "代码": c["code"]} for c in pool]),
+                         use_container_width=True, hide_index=True)
+            s.update(label="🏗️ **股票池构建** · 候选池就绪", state="complete")
+
+        with st.status("🧬 **多维特征提取** · 基本面 / 技术面 / 情绪面 / 行业面 → 特征合成…", expanded=True) as s:
             time.sleep(0.9)
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                st.markdown("**🌐 宏观特征**")
-                for f in feat["macro"]:
-                    st.write("✅", f)
-            with c2:
-                st.markdown("**🏭 行业特征**")
-                for f in feat["industry"]:
-                    st.write("✅", f)
-            with c3:
-                st.markdown("**📈 个股特征**")
-                st.write("✅ 技术指标：均线多头 / MACD 金叉")
-                st.write("✅ 财务指标：ROE、现金流、分红率")
-                st.write("✅ 时讯情感：新闻情感得分正向")
-            s.update(label="🌳 **筛选树推理** · 特征筛选完成", state="complete")
+            t1, t2, t3, t4 = st.tabs(["💰 基本面特征", "📈 技术面特征", "💬 情绪面特征（FinBERT）", "🏭 行业面特征"])
+            with t1:
+                st.dataframe(pd.DataFrame([{"股票": c["name"], "市盈率PE": c["pe"], "市净率PB": c["pb"],
+                                            "ROE(%)": c["roe"], "营收增速(%)": c["rev"]} for c in pool]),
+                             use_container_width=True, hide_index=True)
+                st.caption("数据来源：qstock 财务报表接口 · 筛选逻辑：低估值 + 高 ROE + 稳定增长")
+            with t2:
+                st.dataframe(pd.DataFrame([{"股票": c["name"], "趋势": c["trend"], "均线形态": c["ma"],
+                                            "波动率": c["vol"], "MACD": c["macd"]} for c in pool]),
+                             use_container_width=True, hide_index=True)
+                st.caption("数据来源：qstock 行情接口 · 筛选逻辑：上升趋势 + 均线多头 + MACD 金叉优先")
+            with t3:
+                import plotly.graph_objects as go
+                fig = go.Figure()
+                names = [c["name"] for c in pool]
+                fig.add_trace(go.Bar(name="正面", x=names, y=[c["sent"][0] for c in pool], marker_color=RED))
+                fig.add_trace(go.Bar(name="中性", x=names, y=[c["sent"][2] for c in pool], marker_color="#C3CDE4"))
+                fig.add_trace(go.Bar(name="负面", x=names, y=[c["sent"][1] for c in pool], marker_color=GREEN))
+                fig.update_layout(**PLOTLY_BASE, barmode="stack", height=320, margin=dict(l=10, r=10, t=30, b=10),
+                                  title=dict(text="FinBERT 新闻情感三分类（正面 / 中性 / 负面）", font=dict(size=13, color=NAVY)),
+                                  yaxis=dict(gridcolor="#EEF1F8"), legend=dict(orientation="h", y=1.12))
+                st.plotly_chart(fig, use_container_width=True)
+                st.caption("FinBERT：基于 BERT 架构、在海量金融语料（财报 / 研报 / 新闻）上微调的情感分析模型")
+            with t4:
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.markdown("**🌐 宏观特征**")
+                    for f in feat["macro"]:
+                        st.write("✅", f)
+                with c2:
+                    st.markdown("**🏭 行业特征**")
+                    for f in feat["industry"]:
+                        st.write("✅", f)
+            s.update(label="🧬 **多维特征提取** · 特征合成完毕，送入 LLM 评分", state="complete")
+
+        with st.status("⚖️ **LLM 综合评分** · 分析师视角打分 → 排序 → TopK 筛选…", expanded=True) as s:
+            time.sleep(0.8)
+            import plotly.graph_objects as go
+            names = [c["name"] for c in pool]
+            scores = [c["score"] for c in pool]
+            fig = go.Figure(go.Bar(x=names, y=scores,
+                                   marker_color=[GOLD if i < 3 else "#C3CDE4" for i in range(len(pool))],
+                                   text=scores, textposition="outside", textfont=dict(color=NAVY, size=13)))
+            fig.update_layout(**PLOTLY_BASE, height=300, margin=dict(l=10, r=10, t=30, b=10),
+                              title=dict(text=f"LLM 综合评分（金色 = Top-3 入选）· 满分 100", font=dict(size=13, color=NAVY)),
+                              yaxis=dict(range=[0, 100], gridcolor="#EEF1F8"))
+            st.plotly_chart(fig, use_container_width=True)
+            st.caption("评分 Prompt：You are a senior equity analyst. 综合基本面 / 技术面 / 情绪面 / 行业面四维特征，0-100 打分")
+            s.update(label="⚖️ **LLM 综合评分** · Top-3 标的已锁定", state="complete")
 
         st.info(f"**分析师观点**：{feat['view']}")
 
-        st.markdown("#### 🏆 推荐组合（3 支）")
+        st.markdown("#### 🏆 推荐组合（Top-3）· 已生成推荐解释")
         cols = st.columns(3)
         for col, stk in zip(cols, STOCKS[industry]):
             with col:
@@ -664,12 +812,12 @@ def page_screen():
                     st.write(stk["reason"])
         st.caption("💡 侧边栏可切换行业与风险偏好；历史数据与可视化图表支持回溯查看。数据为演示模拟。")
     else:
-        st.markdown('<div class="sec-title">智能推荐 · 数据可视</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sec-title">Screen 完整流程</div><div class="sec-sub">用户偏好 → 条件解析 → 股票池构建 → 多维评分 → 排序筛选 → 输出推荐</div>', unsafe_allow_html=True)
         c1, c2 = st.columns(2)
         with c1:
-            st.markdown('<div class="card"><div class="icon">🌳</div><h4>筛选树荐股思维</h4><p>参考 Agent-Q 文献构建荐股筛选树，沿宏观 → 行业 → 个股路径搜索与推理，优化智能体筛选荐股信息的能力。</p></div>', unsafe_allow_html=True)
+            st.markdown('<div class="card"><div class="icon">🧬</div><h4>四维特征提取</h4><p>基本面（PE/PB/ROE/营收增速）、技术面（趋势/均线/波动率/MACD）、情绪面（FinBERT 三分类）、行业面（宏观+景气），特征合成后送入 LLM。</p></div>', unsafe_allow_html=True)
         with c2:
-            st.markdown('<div class="card"><div class="icon">👁️</div><h4>分析师视角与需求验证</h4><p>以金融分析师视角结合技术分析与财务分析推荐 3 支行业个股，给出荐股理由，并提供历史信息与可视化走势。</p></div>', unsafe_allow_html=True)
+            st.markdown('<div class="card"><div class="icon">⚖️</div><h4>LLM 评分与 TopK 筛选</h4><p>资深分析师视角对候选池 0-100 综合打分，排序后 Top-3 入选，自动生成推荐解释与可视化走势。</p></div>', unsafe_allow_html=True)
         st.info("👈 请在左侧侧边栏选择行业与风险偏好，点击「开始智能筛选」运行工作流。")
 
 # ============================================================== 页面：星火大模型模拟
@@ -845,6 +993,92 @@ def page_tech():
     <div class="step"><b>04 · 知识库增强提示</b><br><span style="color:#6B7699;font-size:.88rem">检索获取的知识库内容融入提示词，大幅提升回答准确性与精度，维护便捷、可持续更新。</span></div>
     """, unsafe_allow_html=True)
 
+# ============================================================== 页面：面试建议
+INTERVIEW_BEHAVIOR = [
+    ("请举一个你主动设定高难度目标，最后成功落地完成的例子。",
+     "市面上普通 AI 只能简单回答投资问题，存在分析片面、数据不实、普通散户难以理解的问题，我主动提出要搭建一套完整的 AI 金融投研辅助工具。",
+     "独立完成一套多智能体协同智能投顾系统，达到专业分析师级别的回答质量。",
+     "① 将大目标拆解为 Consult 咨询与 Screen 荐股两大模块；② 自学多智能体工作流、RAG 检索增强与 SFT 微调技术；③ 从 Fin 1.0 到 3.0 持续迭代，每个版本针对暴露的问题定向优化。",
+     "系统在 AI as Judge 评测中取得 28.41/30 的平均分，统计检验显著优于 Kimi、Spark 等 SOTA 模型（p=0.017），并成功部署上线。"),
+    ("讲一个你面对大量繁杂信息、多重问题，快速梳理关键、分清轻重缓急解决问题的案例。",
+     "搭建系统时涉及行业资料整理、咨询逻辑设计、选股规则、效果测试等多块内容，初期团队思路分散，各模块输出标准不一。",
+     "统一各模块的输出标准与接口约定，保证系统整体协同推进。",
+     "① 将信息按『数据层—模型层—交互层』三层归类；② 用优先级矩阵（影响面 × 紧急度）排序任务；③ 制定工作流规范文档，明确每个 Agent 的输入输出契约。",
+     "各模块快速对齐，开发效率显著提升，项目按计划完成集成测试。"),
+    ("举例说明你用客观事实、逻辑说服持反对意见的人，统一方案的经历。",
+     "设计咨询模块时，有伙伴认为不需要额外的资料校验环节，觉得会拉长系统响应时间。",
+     "说服团队接受 Search & Verify 事实校验环节。",
+     "① 收集无校验环节时模型产生幻觉的实际案例（编造研报名称、张冠李戴数据）；② 设计对比实验，用有无 Verify 的回答质量评分说话；③ 提出异步检索方案平衡响应速度。",
+     "团队一致同意保留校验环节，系统幻觉率显著下降，用户信任度提升。"),
+    ("分享一次你和团队产生较大观点分歧，主动协调化解矛盾、合力完成任务的经历。",
+     "设计选股模块时，团队出现明显分歧：一部分人认为只看财务基本面筛选即可，另一部分人坚持叠加行情与市场情绪。",
+     "在不伤和气的前提下确定技术方案。",
+     "① 不急于站队，组织双方各自陈述依据；② 提议用消融实验裁决：分别用纯基本面与四维特征方案跑历史数据回测；③ 用命中率与回撤数据客观对比。",
+     "数据证明多维特征方案显著更优，团队欣然采纳『基本面+技术面+情绪面+行业面』四维方案，荐股质量明显提升。"),
+    ("讲一个你主动提出创新思路，落地后显著优化项目效果的案例。",
+     "传统 AI 投顾只能给出单一结论，要么看多要么看空，普通散户很难看懂行业全貌，且经常缺少真实数据支撑。",
+     "从交互层面创新，提升系统的可解释性与用户信任。",
+     "① 提出『透明工作流 + 显式思维链』设计，让用户直观看到任务拆解、专家作答、求证监督全过程；② 增加追问机制与信源展示，信息全部可溯源。",
+     "可解释性大幅增强，模拟用户测评中新手投资者给出 8-9 分高分，成为项目核心创新点。"),
+    ("描述一次时间紧张、资源有限、压力较大的场景，你如何推进并顺利交付成果。",
+     "项目交付期限提前，行业研报与投资素材储备不足，人手有限，既要完成咨询模块又要搭建选股模块。",
+     "在压缩后的期限内保质保量交付。",
+     "① 砍除非核心功能，聚焦 Consult 与 Screen 两条主线；② 复用已沉淀的知识库与提示词模板，避免重复建设；③ 任务并行化，每日站会对齐进度与风险。",
+     "系统按期上线并通过全部测试用例，核心功能零缺陷交付。"),
+    ("分享一次你从零快速学习全新领域知识，马上落地解决实际问题的经历。",
+     "此前没有系统学习过专业投研分析框架，但要搭建 AI 金融投研工具，必须快速掌握行业分析、股票筛选与投资者风险偏好等知识。",
+     "在短时间内建立投研知识体系并转化为系统能力。",
+     "① 以产业链分析法为主线，精读白酒、红利、贵金属三大行业高质量券商研报；② 向金融专业同学请教关键指标含义；③ 边学边做，把学到的分析框架沉淀为知识库与提示词模板。",
+     "独立完成三大行业知识库与分析模块，系统回答质量通过金融专业研究生人工评测认可。"),
+]
+
+INTERVIEW_TECH = [
+    ("什么是 Agent？Agent 和 LLM 有什么区别？",
+     "Agent 是能够感知信息、做出决策并执行行动以完成目标的智能系统。\n\n**LLM = 只负责回答/生成**；**Agent = 能思考 + 能规划 + 能行动**。Agent 以 LLM 为大脑，叠加任务规划、工具调用（搜索、数据库、API）与记忆能力，可以自主完成多步骤复杂任务。"),
+    ("什么是 RAG？完整流程是什么？有什么作用？⭐面试高频",
+     "RAG（Retrieval-Augmented Generation，检索增强生成）是在生成前先检索外部知识、把检索结果拼入提示词再生成答案的技术。\n\n**完整流程（7 步）**：① 文档切分（本项目用语义段落切分 Semantic Chunking，同一主题划为一个 Chunk）→ ② 向量化（星火 Embedding 模型编码）→ ③ 存入向量数据库（Chroma）→ ④ 查询向量化 → ⑤ 相似度检索（余弦相似度 Top-K）→ ⑥ Prompt 拼接（系统指令约束：严格依据资料、标注来源）→ ⑦ 生成答案。\n\n**作用**：① 解决模型知识不新的问题；② 解决知识不全的问题、避免幻觉；③ 让模型能访问私域 / 内部数据。"),
+    ("什么是模型幻觉？产生原因是什么？如何抑制？",
+     "幻觉是大模型生成看似合理但与事实不符内容的现象。\n\n**典型表现**：① 编造事实（把不存在的论文、新闻、数据说成真的）；② 张冠李戴（把 A 的结论安到 B 头上）；③ 虚构引用。\n\n**原因**：语言流畅性优先于真实性；缺少实时知识核对机制。\n\n**本项目对策**：RAG 知识库约束回答依据 + Search Agent 联网检索 + Verify Agent 事实校验，输出与网络数据、知识库数据双重比对。"),
+    ("什么是微调？什么是 LoRA 微调？",
+     "**微调（Fine-tune）**：通用大模型见过海量数据但不懂你的专属任务与风格，微调就是用领域数据继续训练，让模型掌握专属能力。本项目用证券/基金从业题库 + FinCUGE 数据集 + 行业研报问答对，在星火平台对 Spark 模型做 SFT 微调。\n\n**LoRA**：不改动原模型任何权重，在 Transformer 注意力模块旁额外插入两个极小的低秩矩阵 A、B，只训练这两个矩阵。\n\n**LoRA 优势**：① 显存门槛低；② 训练速度快；③ 权重可随时开关切换。\n\n**步骤**：准备专属数据集 → 冻结原始权重、仅开启 LoRA 矩阵训练 → 少量轮次训练收敛（本项目 lr=8e-5，5 epochs）→ 保存并绑定 LoRA 权重发布。"),
+    ("什么是 Prompt Engineering？高质量 Prompt 的基本结构？",
+     "Prompt Engineering 本质是用自然语言精确描述需求，引导模型输出高质量结果。\n\n**高质量 Prompt 四要素**：① 角色（Role：你是资深金融分析师）；② 任务（Task：明确要做什么）；③ 上下文 / 约束（依据给定资料、不得编造、标注来源）；④ 输出格式（分点、表格、JSON 等）。\n\n本项目 Screen 的评分 Prompt 即采用『资深股票分析师』角色 + 四维特征输入 + 0-100 结构化打分输出。"),
+    ("你们的三层评测体系是怎么设计的？",
+     "① **AI as Judge**：第三方大模型从相关性、完整性、逻辑性三个维度 0-30 分批量打分，并用 t 检验做显著性验证（本项目 p=0.017 显著优于 SOTA）；② **AI as Customers**：生成 20 个不同投资水平的模拟用户身份提问并反馈评分，验证普适性；③ **人工交叉评测**：金融专业研究生按统一标准（单题满分 30，覆盖行业数据、产业链分析、风险提示、无幻觉四点）主观评测。另配合**消融实验**验证微调与工作流组件的各自贡献。"),
+]
+
+def page_interview():
+    st.markdown("""
+    <div class="hero hero-mini">
+      <div class="kicker">Interview Playbook · STAR & Tech Q&A</div>
+      <h1 style="font-size:2rem;">🎤 项目面试建议</h1>
+      <div class="sub" style="margin-bottom:0;">AI 面试行为题（STAR 法则） · 技术高频问答 · 全部答案锚定 Fin Synagent 真实项目经历</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown('<div class="sec-title">第一部分 · AI 面试行为题</div><div class="sec-sub">STAR 法则：Situation 背景 → Task 任务 → Action 行动 → Result 结果</div>', unsafe_allow_html=True)
+    for i, (q, s, t, a, r) in enumerate(INTERVIEW_BEHAVIOR, 1):
+        with st.expander(f"**Q{i} · {q}**"):
+            st.markdown(f"""
+            <div class="step" style="border-left-color:#2B4C9B;"><b>S · 背景</b><br><span style="color:#55607a;font-size:.9rem;">{s}</span></div>
+            <div class="step" style="border-left-color:#4A6FD4;"><b>T · 任务</b><br><span style="color:#55607a;font-size:.9rem;">{t}</span></div>
+            <div class="step" style="border-left-color:#C9A227;"><b>A · 行动</b><br><span style="color:#55607a;font-size:.9rem;">{a}</span></div>
+            <div class="step" style="border-left-color:#1E9E6A;"><b>R · 结果</b><br><span style="color:#55607a;font-size:.9rem;">{r}</span></div>
+            """, unsafe_allow_html=True)
+
+    st.markdown('<div class="sec-title">第二部分 · 技术高频问答</div><div class="sec-sub">围绕本项目核心技术点：Multi-Agent · RAG · 微调 / LoRA · 幻觉抑制 · 评测体系</div>', unsafe_allow_html=True)
+    for q, a in INTERVIEW_TECH:
+        with st.expander(f"**{q}**"):
+            st.markdown(a)
+
+    st.markdown("""
+    <div class="card" style="margin-top:22px;">
+      <h4>💡 答题小贴士</h4>
+      <p>① 行为题务必落到<b>量化结果</b>（28.41 分、p=0.017、模拟用户 8-9 分）；② 技术题先给一句话定义，再讲流程，最后落到<b>本项目怎么用的</b>；
+      ③ 被追问 RAG 时主动说出七步流程与语义切分细节——这是面试高频考点。</p>
+    </div>
+    """, unsafe_allow_html=True)
+
 # ============================================================== 导航
 PAGES = {
     "首页": page_home,
@@ -853,8 +1087,9 @@ PAGES = {
     "星火大模型": page_spark,
     "测试评估": page_eval,
     "技术设计": page_tech,
+    "面试建议": page_interview,
 }
-NAV_ICONS = ["house-door", "chat-square-text", "graph-up-arrow", "fire", "clipboard2-data", "cpu"]
+NAV_ICONS = ["house-door", "chat-square-text", "graph-up-arrow", "fire", "clipboard2-data", "cpu", "mic"]
 
 with st.sidebar:
     st.markdown("""
