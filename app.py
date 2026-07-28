@@ -219,16 +219,20 @@ section[data-testid="stSidebar"] input,
 section[data-testid="stSidebar"] [data-baseweb="select"] *,
 section[data-testid="stSidebar"] [data-baseweb="select"] input,
 section[data-testid="stSidebar"] [data-baseweb="popover"] * {{ color:{INK} !important; }}
+section[data-testid="stSidebar"] .stButton > button,
 div[data-testid="stSidebar"] .stButton > button {{
   background: rgba(255,255,255,.08); border: 1px solid rgba(201,162,39,.45);
   color: #FFFFFF !important; border-radius: 11px; transition: all .2s ease; font-weight:500;
+  white-space: normal; line-height: 1.5; text-align: left; padding: 10px 14px;
 }}
+section[data-testid="stSidebar"] .stButton > button:hover,
 div[data-testid="stSidebar"] .stButton > button:hover {{
   background: rgba(201,162,39,.16); border-color: rgba(201,162,39,.7); transform: translateX(2px);
 }}
+section[data-testid="stSidebar"] .stButton > button[kind="primary"],
 div[data-testid="stSidebar"] .stButton > button[kind="primary"] {{
   background: linear-gradient(90deg, {GOLD}, {GOLD2}); color: {NAVY} !important;
-  border: none; font-weight: 700;
+  border: none; font-weight: 700; text-align: center;
 }}
 .sb-brand {{ text-align:center; padding:10px 0 4px 0; }}
 .sb-brand .logo {{ font-family:"Noto Serif SC",serif; font-size:1.55rem; font-weight:900; color:#fff !important; letter-spacing:1px; }}
@@ -1070,14 +1074,6 @@ def page_interview():
     for q, a in INTERVIEW_TECH:
         with st.expander(f"**{q}**"):
             st.markdown(a)
-
-    st.markdown("""
-    <div class="card" style="margin-top:22px;">
-      <h4>💡 答题小贴士</h4>
-      <p>① 行为题务必落到<b>量化结果</b>（28.41 分、p=0.017、模拟用户 8-9 分）；② 技术题先给一句话定义，再讲流程，最后落到<b>本项目怎么用的</b>；
-      ③ 被追问 RAG 时主动说出七步流程与语义切分细节——这是面试高频考点。</p>
-    </div>
-    """, unsafe_allow_html=True)
 
 # ============================================================== 导航
 PAGES = {
