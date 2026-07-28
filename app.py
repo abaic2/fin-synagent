@@ -200,10 +200,11 @@ div[data-testid="stSidebar"] {{
   background: linear-gradient(180deg, #081733 0%, {NAVY} 55%, {NAVY2} 100%);
   border-right: 1px solid rgba(201,162,39,.25);
 }}
-div[data-testid="stSidebar"] * {{ color:#DCE4F5 !important; }}
+div[data-testid="stSidebar"] * {{ color:#FFFFFF !important; }}
+div[data-testid="stSidebar"] .stCaption, div[data-testid="stSidebar"] small {{ color:#AFC2E8 !important; }}
 div[data-testid="stSidebar"] .stButton > button {{
-  background: rgba(255,255,255,.06); border: 1px solid rgba(201,162,39,.35);
-  color: #E8EDF8 !important; border-radius: 11px; transition: all .2s ease;
+  background: rgba(255,255,255,.08); border: 1px solid rgba(201,162,39,.45);
+  color: #FFFFFF !important; border-radius: 11px; transition: all .2s ease; font-weight:500;
 }}
 div[data-testid="stSidebar"] .stButton > button:hover {{
   background: rgba(201,162,39,.16); border-color: rgba(201,162,39,.7); transform: translateX(2px);
@@ -215,7 +216,7 @@ div[data-testid="stSidebar"] .stButton > button[kind="primary"] {{
 .sb-brand {{ text-align:center; padding:10px 0 4px 0; }}
 .sb-brand .logo {{ font-family:"Noto Serif SC",serif; font-size:1.55rem; font-weight:900; color:#fff !important; letter-spacing:1px; }}
 .sb-brand .logo span {{ color:{GOLD2} !important; }}
-.sb-brand .slogan {{ font-size:.72rem; color:#8FA3CC !important; letter-spacing:2.5px; margin-top:2px; }}
+.sb-brand .slogan {{ font-size:.72rem; color:#C9D4F2 !important; letter-spacing:2.5px; margin-top:2px; }}
 
 .footer {{
   text-align:center; color:#96A0BD; font-size:.8rem; margin-top:56px; padding-top:18px;
@@ -861,18 +862,19 @@ with st.sidebar:
         default_index=0,
         styles={
             "container": {"padding": "6px 2px", "background-color": "transparent"},
-            "icon": {"color": "#8FA3CC", "font-size": "15px"},
+            "icon": {"color": "#E8C766", "font-size": "16px"},
             "nav-link": {
-                "font-size": "15px", "font-family": "Noto Sans SC", "text-align": "left",
+                "font-size": "16px", "font-family": "Noto Sans SC", "text-align": "left",
                 "margin": "4px 0", "padding": "10px 16px", "border-radius": "12px",
-                "color": "#C6D3F0", "--hover-color": "rgba(201,162,39,0.14)",
+                "color": "#FFFFFF", "font-weight": "600",
+                "--hover-color": "rgba(201,162,39,0.22)",
                 "border": "1px solid transparent",
             },
             "nav-link-selected": {
-                "background": "linear-gradient(90deg, rgba(201,162,39,0.22), rgba(201,162,39,0.06))",
-                "border": "1px solid rgba(201,162,39,0.55)",
-                "color": "#F6ECD0", "font-weight": "700",
-                "border-left": "4px solid #C9A227",
+                "background": "linear-gradient(90deg, rgba(201,162,39,0.35), rgba(201,162,39,0.10))",
+                "border": "1px solid rgba(201,162,39,0.75)",
+                "color": "#FFE9A8", "font-weight": "800",
+                "border-left": "4px solid #E8C766",
             },
         },
     )
