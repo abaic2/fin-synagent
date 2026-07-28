@@ -10,6 +10,7 @@ import random
 import numpy as np
 import pandas as pd
 import streamlit as st
+from streamlit_option_menu import option_menu
 
 st.set_page_config(
     page_title="Fin Synagent · 多智能体协同智能投顾",
@@ -200,10 +201,17 @@ div[data-testid="stSidebar"] {{
   border-right: 1px solid rgba(201,162,39,.25);
 }}
 div[data-testid="stSidebar"] * {{ color:#DCE4F5 !important; }}
-div[data-testid="stSidebar"] .stRadio > div > label {{
-  padding:9px 14px; border-radius:11px; margin:2px 0; transition: all .2s ease;
+div[data-testid="stSidebar"] .stButton > button {{
+  background: rgba(255,255,255,.06); border: 1px solid rgba(201,162,39,.35);
+  color: #E8EDF8 !important; border-radius: 11px; transition: all .2s ease;
 }}
-div[data-testid="stSidebar"] .stRadio > div > label:hover {{ background: rgba(201,162,39,.14); }}
+div[data-testid="stSidebar"] .stButton > button:hover {{
+  background: rgba(201,162,39,.16); border-color: rgba(201,162,39,.7); transform: translateX(2px);
+}}
+div[data-testid="stSidebar"] .stButton > button[kind="primary"] {{
+  background: linear-gradient(90deg, {GOLD}, {GOLD2}); color: {NAVY} !important;
+  border: none; font-weight: 700;
+}}
 .sb-brand {{ text-align:center; padding:10px 0 4px 0; }}
 .sb-brand .logo {{ font-family:"Noto Serif SC",serif; font-size:1.55rem; font-weight:900; color:#fff !important; letter-spacing:1px; }}
 .sb-brand .logo span {{ color:{GOLD2} !important; }}
@@ -830,13 +838,14 @@ def page_tech():
 
 # ============================================================== 导航
 PAGES = {
-    "🏠  Home 首页": page_home,
-    "💬  Consult 智能咨询": page_consult,
-    "📊  Screen 智能荐股": page_screen,
-    "🔥  星火大模型模拟": page_spark,
-    "🧪  测试与评估": page_eval,
-    "🧠  技术设计": page_tech,
+    "首页": page_home,
+    "智能咨询": page_consult,
+    "智能荐股": page_screen,
+    "星火大模型": page_spark,
+    "测试评估": page_eval,
+    "技术设计": page_tech,
 }
+NAV_ICONS = ["house-door", "chat-square-text", "graph-up-arrow", "fire", "clipboard2-data", "cpu"]
 
 with st.sidebar:
     st.markdown("""
@@ -845,8 +854,28 @@ with st.sidebar:
       <div class="slogan">MULTI-AGENT ROBO-ADVISOR</div>
     </div>
     """, unsafe_allow_html=True)
-    st.markdown("---")
-    choice = st.radio("页面导航", list(PAGES.keys()), label_visibility="collapsed")
+    choice = option_menu(
+        menu_title=None,
+        options=list(PAGES.keys()),
+        icons=NAV_ICONS,
+        default_index=0,
+        styles={
+            "container": {"padding": "6px 2px", "background-color": "transparent"},
+            "icon": {"color": "#8FA3CC", "font-size": "15px"},
+            "nav-link": {
+                "font-size": "15px", "font-family": "Noto Sans SC", "text-align": "left",
+                "margin": "4px 0", "padding": "10px 16px", "border-radius": "12px",
+                "color": "#C6D3F0", "--hover-color": "rgba(201,162,39,0.14)",
+                "border": "1px solid transparent",
+            },
+            "nav-link-selected": {
+                "background": "linear-gradient(90deg, rgba(201,162,39,0.22), rgba(201,162,39,0.06))",
+                "border": "1px solid rgba(201,162,39,0.55)",
+                "color": "#F6ECD0", "font-weight": "700",
+                "border-left": "4px solid #C9A227",
+            },
+        },
+    )
     st.markdown("---")
     st.caption("富国开贸团队 · 演示 Demo v2")
     st.caption("⚠️ 数据为模拟数据，不构成投资建议")
