@@ -196,9 +196,17 @@ h1,h2,h3 {{ font-family: "Noto Sans SC", sans-serif; }}
 @keyframes blink {{ 50% {{ opacity:0; }} }}
 
 /* ---------- 侧边栏 ---------- */
+section[data-testid="stSidebar"],
 div[data-testid="stSidebar"] {{
-  background: linear-gradient(180deg, #081733 0%, {NAVY} 55%, {NAVY2} 100%);
+  background: linear-gradient(180deg, #081733 0%, {NAVY} 55%, {NAVY2} 100%) !important;
   border-right: 1px solid rgba(201,162,39,.25);
+}}
+section[data-testid="stSidebar"] > div,
+div[data-testid="stSidebar"] > div,
+div[data-testid="stSidebarContent"],
+div[data-testid="stSidebar"] [data-testid="stSidebarContent"],
+div[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {{
+  background: transparent !important;
 }}
 div[data-testid="stSidebar"] * {{ color:#FFFFFF !important; }}
 div[data-testid="stSidebar"] .stCaption, div[data-testid="stSidebar"] small {{ color:#AFC2E8 !important; }}
