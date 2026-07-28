@@ -861,7 +861,10 @@ with st.sidebar:
         icons=NAV_ICONS,
         default_index=0,
         styles={
-            "container": {"padding": "6px 2px", "background-color": "transparent"},
+            "container": {
+                "padding": "10px 8px", "background-color": "#0E2450",
+                "border-radius": "14px", "border": "1px solid rgba(201,162,39,0.35)",
+            },
             "icon": {"color": "#E8C766", "font-size": "16px"},
             "nav-link": {
                 "font-size": "16px", "font-family": "Noto Sans SC", "text-align": "left",
