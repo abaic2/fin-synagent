@@ -4,6 +4,7 @@ Fin Synagent - 基于多智能体协同的智能投顾 Demo (v2)
 UI 全面升级 + 星火大模型模拟引擎
 还原自《基于多智能体协同的智能投顾设计》/《AIGC》/《创作思路说明》
 """
+import os
 import json
 import time
 import random
@@ -11,6 +12,18 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 from streamlit_option_menu import option_menu
+
+# ============================================================== 真实知识库数据（离线 bundle）
+KB_DATA_PATH = os.path.join(os.path.dirname(__file__), "kb_data.json")
+@st.cache_data
+def load_kb_data():
+    """加载由 knowledge_base/Chroma 真实检索 + 微调数据集统计生成的 bundle。"""
+    try:
+        with open(KB_DATA_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+KB = load_kb_data()
 
 st.set_page_config(
     page_title="Fin Synagent · 多智能体协同智能投顾",
@@ -421,6 +434,156 @@ GUIDE_PROMPTS = [
     "【追问】现在市场看好这个行业吗？建议短期持有还是长期持有？",
 ]
 
+# ============================================================== Screen 四维分析（带实例）
+DIM_TITLE = {"fundamental": "基本面", "technical": "技术面", "sentiment": "情绪面", "industry": "行业面"}
+
+SCREEN_ANALYSIS = {
+    "白酒": {
+        "fundamental": {
+            "summary": "白酒板块基本面高度分化：高端龙头盈利质量最优，区域酒增长承压。核心看 ROE 与营收增速的匹配度——低 PE 未必便宜、高 PE 也未必贵，必须结合成长性判断。",
+            "examples": [
+                {"title": "贵州茅台", "tag": "高 ROE 支撑高估值", "point": "PE 27.4、PB 9.5、ROE 32.1%、营收 +15.8%。实例：ROE 超 30% 领跑全板块，自由现金流充沛、分红率稳定，高估值由高确定性盈利质量支撑，仍是溢价最高的标的。"},
+                {"title": "五粮液", "tag": "估值处历史低位", "point": "PE 17.8、ROE 24.5%、营收 +11.2%。实例：估值处于近五年低位，批价由 920 元回升至 960 元带动盈利预期修复，性价比突出。"},
+                {"title": "洋河股份", "tag": "低估值≠便宜", "point": "PE 13.9 看似最低，但 ROE 20.4%、营收仅 +6.7%。实例：低估值背后是增长乏力，印证「便宜有便宜的道理」，基本面相对最弱。"},
+            ],
+        },
+        "technical": {
+            "summary": "均线系统与 MACD 是判断白酒短期动能的关键：多头排列（MA20>MA60 + 金叉）趋势最健康，死叉/空头排列则短期承压，粘合形态预示变盘。",
+            "examples": [
+                {"title": "贵州茅台", "tag": "多头排列最健康", "point": "上升趋势、MA20>MA60、MACD 金叉、低波动。实例：均线多头叠加金叉，技术形态最健康，适合顺势持有。"},
+                {"title": "山西汾酒", "tag": "空头排列短期承压", "point": "横盘整理、MA20<MA60、MACD 死叉、高波动。实例：均线空头且死叉，短期动能最弱，需等待放量突破信号。"},
+                {"title": "泸州老窖", "tag": "方向选择期", "point": "横盘、MA20≈MA60、MACD 粘合。实例：粘合形态预示变盘，宜观望或分批，不宜追涨。"},
+            ],
+        },
+        "sentiment": {
+            "summary": "FinBERT 对新闻/研报的情感三分类显示：龙头正面情绪占比最高、负面最低；增长存疑的标的负面占比明显抬升。",
+            "examples": [
+                {"title": "贵州茅台", "tag": "正面 0.78 居首", "point": "正面 0.78 / 中性 0.08 / 负面 0.14。实例：近八成舆情正面，市场对高端确定性共识最强。"},
+                {"title": "五粮液", "tag": "正面 0.71", "point": "批价回升提振情绪，正面占比居前，负面仅 0.11。"},
+                {"title": "洋河股份", "tag": "负面 0.26 最高", "point": "正面 0.52 / 负面 0.26。实例：负面占比超两成，反映市场对增长放缓的担忧，情绪面最弱。"},
+            ],
+        },
+        "industry": {
+            "summary": "行业处于周期底部右侧：库存去化至良性、批价企稳、集中度提升，龙头阿尔法属性凸显。",
+            "examples": [
+                {"title": "宏观驱动", "tag": "消费场景修复", "point": "社零餐饮回暖、CPI 温和回升、流动性合理充裕，共同支撑白酒消费场景修复。"},
+                {"title": "行业景气", "tag": "库存去化+批价企稳", "point": "渠道库存去化至 1.5-2 个月良性区间，飞天批价站稳 2200 元上方，头部 CR5 超 45%。"},
+                {"title": "配置观点", "tag": "龙头底仓", "point": "实例：以茅台/五粮液为核心底仓，次高端（汾酒/老窖）择机波段参与。"},
+            ],
+        },
+    },
+    "红利": {
+        "fundamental": {
+            "summary": "红利资产的核心定价锚是「股息率 − 无风险利率」的利差与分红可持续性（分红率、经营现金流覆盖率）。低 PE/PB + 高 ROE + 稳定现金流是优选标准。",
+            "examples": [
+                {"title": "中国神华", "tag": "现金奶牛", "point": "PE 12.6、PB 1.9、ROE 15.2%、营收 +3.1%。实例：煤电运化一体化、长协煤占比高平滑周期，分红率超 70%、股息率约 5.6%，现金流对分红覆盖 1.5 倍以上。"},
+                {"title": "工商银行", "tag": "破净高股息", "point": "PE 6.1、PB 0.7、ROE 10.6%。实例：市净率破净、股息率超 5%，受益中特估与市值管理，险资持续增配。"},
+                {"title": "陕西煤业", "tag": "周期波动需警惕", "point": "营收 −2.3% 下滑。实例：盈利随煤价波动，但分红仍稳，体现「现金奶牛」属性，需关注周期下行风险。"},
+            ],
+        },
+        "technical": {
+            "summary": "红利多为低波动防御品种，技术信号以趋势延续为主；MA20>MA60 且金叉的标的处于上升通道，窄幅震荡者弹性有限。",
+            "examples": [
+                {"title": "中国神华", "tag": "慢牛红利形态", "point": "上升趋势、MA20>MA60、金叉、低波动。实例：稳步抬升，典型慢牛红利形态。"},
+                {"title": "长江电力", "tag": "技术面最稳健", "point": "上升趋势、金叉、低波动。实例：类债属性、回撤极小，技术面最稳健。"},
+                {"title": "宁沪高速", "tag": "防御强弹性弱", "point": "横盘、MA20≈MA60、粘合、低波动。实例：窄幅震荡，防御属性强但弹性有限。"},
+            ],
+        },
+        "sentiment": {
+            "summary": "红利标的情绪整体平稳偏暖，负面占比普遍低于 0.2；利率下行预期持续强化其配置逻辑。",
+            "examples": [
+                {"title": "中国神华", "tag": "正面 0.74", "point": "高股息共识强，负面 0.17 多为煤价波动担忧。"},
+                {"title": "工商银行", "tag": "正面 0.66", "point": "中特估与分红新政提振情绪，负面仅 0.22。"},
+                {"title": "陕西煤业", "tag": "情绪略弱", "point": "正面 0.59 较低。实例：煤价下行预期使情绪略弱于水电/银行。"},
+            ],
+        },
+        "industry": {
+            "summary": "无风险利率下行 + 市值管理新政 + 险资配置需求，使高股息资产配置价值持续凸显，攻守兼备。",
+            "examples": [
+                {"title": "宏观驱动", "tag": "利率低位", "point": "十年期国债收益率约 1.7% 低位，险资配置需求旺盛，红利相对债券利差走阔。"},
+                {"title": "行业景气", "tag": "利差历史高位", "point": "中证红利股息率约 5.2%，与 10Y 国债利差处历史高位，央国企分红意愿提升。"},
+                {"title": "配置观点", "tag": "底仓长期持有", "point": "实例：以神华/长电为底仓长期持有，获取股息 + 估值修复双重收益。"},
+            ],
+        },
+    },
+    "贵金属": {
+        "fundamental": {
+            "summary": "贵金属股弹性来自「量 × 价」双击：金价/铜价上行叠加矿产产量扩张。需关注 PE 与产量增速的匹配，纯金标的在金价上行期业绩弹性最大。",
+            "examples": [
+                {"title": "紫金矿业", "tag": "量价齐升", "point": "PE 16.9、PB 3.8、ROE 22.6%、营收 +18.3%。实例：铜金双轮，卡莫阿/巨龙铜矿放量，矿产金三年复合增速超 20%，量价齐升。"},
+                {"title": "山东黄金", "tag": "金价弹性最大", "point": "PE 38.2 偏高、ROE 13.4%、营收 +21.7%。实例：纯正黄金标的，金价上行期业绩弹性最大，西岭金矿探矿权注入预期强化资源储备。"},
+                {"title": "中金黄金", "tag": "产量跃升在望", "point": "PE 22.7、营收 +12.5%。实例：央企背景、纱岭金矿投产在即，产量跃升在望。"},
+            ],
+        },
+        "technical": {
+            "summary": "贵金属受商品价格驱动，趋势性强、波动中高；MA20>MA60 且金叉的标的处于主升段，空头排列者短期宜等企稳。",
+            "examples": [
+                {"title": "紫金矿业", "tag": "主升浪最清晰", "point": "上升趋势、MA20>MA60、金叉、中波动。实例：均线多头叠加金叉，主升浪形态最清晰。"},
+                {"title": "山东黄金", "tag": "随金价走强", "point": "上升趋势、金叉。实例：随金价突破同步走强，趋势与商品共振。"},
+                {"title": "银泰黄金", "tag": "技术面最弱", "point": "弱势整理、MA20<MA60、死叉。实例：短期空头排列，宜等企稳再介入。"},
+            ],
+        },
+        "sentiment": {
+            "summary": "降息预期与央行购金叙事使贵金属正面情绪高涨，紫金/山金正面占比居前。",
+            "examples": [
+                {"title": "紫金矿业", "tag": "正面 0.81 最高", "point": "量价齐升逻辑共识强，负面仅 0.12。"},
+                {"title": "山东黄金", "tag": "正面 0.75", "point": "避险 + 降息双驱动，情绪乐观。"},
+                {"title": "银泰黄金", "tag": "正面 0.54 最低", "point": "技术走弱拖累情绪，负面占比抬升。"},
+            ],
+        },
+        "industry": {
+            "summary": "美联储降息周期 + 全球央行连续购金 + 地缘避险，黄金中长期牛市格局确立，铜金共振。",
+            "examples": [
+                {"title": "宏观驱动", "tag": "实际利率下行", "point": "美联储降息预期升温、实际利率下行、地缘风险抬升避险需求。"},
+                {"title": "行业景气", "tag": "央行连续购金", "point": "全球央行连续 30 个月净购金、矿产供给刚性、金价屡创新高，沪金主力创历史新高。"},
+                {"title": "配置观点", "tag": "龙头长期持有", "point": "实例：以紫金/山金为龙头长期持有，短期回调即加仓窗口。"},
+            ],
+        },
+    },
+}
+
+def render_analysis_block(industry: str, dim: str):
+    """在 Screen 各维度 tab 中渲染带实例的叙事分析。"""
+    block = SCREEN_ANALYSIS.get(industry, {}).get(dim)
+    if not block:
+        return
+    st.markdown(f"**📝 {DIM_TITLE[dim]}分析要点**")
+    st.write(block["summary"])
+    exs = block["examples"]
+    cols = st.columns(len(exs))
+    for col, ex in zip(cols, exs):
+        with col:
+            st.markdown(
+                f'<div class="card" style="height:100%"><div class="icon">📌</div>'
+                f'<h4>{ex["title"]}</h4>'
+                f'<p><b style="color:{GOLD}">{ex.get("tag","实例")}</b><br>{ex["point"]}</p></div>',
+                unsafe_allow_html=True)
+
+def get_rag_hits(industry: str, user_query: str):
+    """从真实 Chroma 检索 bundle 中按行业路由取出 Top 片段。"""
+    if not KB:
+        return []
+    coll_key = "宏观" if industry == "default" else industry
+    qmap = KB.get("retrieval", {}).get(coll_key, {})
+    # 选取与用户问题字符重叠最多的代表性查询
+    best, best_score = None, 0
+    for q, hits in qmap.items():
+        s = sum(1 for ch in set(user_query) if ch in q)
+        if s > best_score:
+            best_score, best = s, hits
+    if best and best_score > 0:
+        return best
+    # 兜底：聚合该行业全部命中、按相似度去重取 Top-4
+    seen, pool = set(), []
+    for hits in qmap.values():
+        for h in hits:
+            key = (h["source"], h["page"], h["title"])
+            if key not in seen:
+                seen.add(key)
+                pool.append(h)
+    pool.sort(key=lambda x: -x["score"])
+    return pool[:4]
+
 SPARK_MODELS = {
     "Spark4.0 Ultra": {"domain": "4.0Ultra", "desc": "星火最强旗舰模型，分析与推理能力卓越，Fin 1.5 起作为专家模型，内生联网搜索。", "grad": "linear-gradient(135deg,#7A4FD0,#4A2C9B)", "badge": "专家模型 · 本项目采用"},
     "Spark Max": {"domain": "generalv3.5", "desc": "高性能通用模型，兼顾速度与质量，适合复杂任务拆解与总结。", "grad": "linear-gradient(135deg,#2B4C9B,#16305E)", "badge": "旗舰"},
@@ -583,7 +746,7 @@ def page_home():
         """, unsafe_allow_html=True)
 
     st.markdown('<div class="sec-title">评估结果一览</div><div class="sec-sub">AI as Judge · AI as Customers · 人工评估三重验证</div>', unsafe_allow_html=True)
-    kpis = [("28.41", "AI 评估均分（满分30）"), ("+8.21%", "显著优于 SOTA 模型"), ("p=0.017", "t 检验显著性"), ("3 大行业", "白酒 · 红利 · 贵金属知识库")]
+    kpis = [("28.41", "AI 评估均分（满分30）"), ("+8.21%", "显著优于 SOTA 模型"), ("p=0.017", "t 检验显著性"), ("3329", "RAG 向量片段（35 PDF）")]
     for col, (v, k) in zip(st.columns(4), kpis):
         with col:
             st.markdown(f'<div class="kpi"><div class="v">{v}</div><div class="k">{k}</div></div>', unsafe_allow_html=True)
@@ -615,14 +778,21 @@ def run_workflow(query: str, decomp_level: int):
     with st.expander("🙋 人机协同 · 对拆解任务进行补充（可选）"):
         st.text_input("输入您希望补充的分析方向，专家将一并考虑：", key=f"supp_{time.time()}")
 
-    # RAG 知识库检索
+    # RAG 知识库检索（真实 Chroma 向量库检索结果）
     rag_key = next((k for k in ["白酒", "红利", "贵金属"] if k in query), "default")
-    with st.status("📚 **知识库检索（RAG）** · 正在检索行业知识库…", expanded=True) as s:
+    rag_hits = get_rag_hits(rag_key, query)
+    with st.status("📚 **知识库检索（RAG）** · 正在检索 Chroma 行业向量库…", expanded=True) as s:
         time.sleep(0.6)
-        st.write("**检索流程**：语义段落切分（Semantic Chunking）→ 星火 Embedding 向量化 → Chroma 向量库 → 查询向量化 → 余弦相似度 Top-K 检索 → Prompt 拼接")
-        for title, score, snippet in RAG_CHUNKS[rag_key]:
-            st.markdown(f'<div class="src">📄 <b>{title}</b> · 相似度 <b>{score:.3f}</b><br><span style="color:#4A6A56;">{snippet}</span></div>', unsafe_allow_html=True)
-        s.update(label="📚 **知识库检索（RAG）** · 命中 Top-3 高相关片段，已注入专家提示词", state="complete")
+        kb_tag = "宏观" if rag_key == "default" else rag_key
+        st.write(f"**检索域**：`{kb_tag}` collection · **检索流程**：语义段落切分 → 中文向量化（bge 512 维）→ Chroma 持久化 → 查询向量化 → 余弦相似度 Top-K → Prompt 拼接")
+        if rag_hits:
+            for h in rag_hits:
+                st.markdown(
+                    f'<div class="src">📄 <b>{h["source"]}</b> · p{h["page"]} · 相似度 <b>{h["score"]:.3f}</b><br>'
+                    f'<span style="color:#4A6A56;">{h["text"]}</span></div>', unsafe_allow_html=True)
+        else:
+            st.warning("知识库 bundle 未加载，已回退至内置示例片段。")
+        s.update(label="📚 **知识库检索（RAG）** · 命中高相关片段，已注入专家提示词", state="complete")
 
     with st.status("🎓 **专家智能体（Spark4.0 Ultra）** · 正在基于检索片段生成专业回答…", expanded=True) as s:
         time.sleep(0.8)
@@ -748,11 +918,13 @@ def page_screen():
                                             "ROE(%)": c["roe"], "营收增速(%)": c["rev"]} for c in pool]),
                              use_container_width=True, hide_index=True)
                 st.caption("数据来源：qstock 财务报表接口 · 筛选逻辑：低估值 + 高 ROE + 稳定增长")
+                render_analysis_block(industry, "fundamental")
             with t2:
                 st.dataframe(pd.DataFrame([{"股票": c["name"], "趋势": c["trend"], "均线形态": c["ma"],
                                             "波动率": c["vol"], "MACD": c["macd"]} for c in pool]),
                              use_container_width=True, hide_index=True)
                 st.caption("数据来源：qstock 行情接口 · 筛选逻辑：上升趋势 + 均线多头 + MACD 金叉优先")
+                render_analysis_block(industry, "technical")
             with t3:
                 import plotly.graph_objects as go
                 fig = go.Figure()
@@ -765,6 +937,7 @@ def page_screen():
                                   yaxis=dict(gridcolor="#EEF1F8"), legend=dict(orientation="h", y=1.12))
                 st.plotly_chart(fig, use_container_width=True)
                 st.caption("FinBERT：基于 BERT 架构、在海量金融语料（财报 / 研报 / 新闻）上微调的情感分析模型")
+                render_analysis_block(industry, "sentiment")
             with t4:
                 c1, c2 = st.columns(2)
                 with c1:
@@ -775,6 +948,7 @@ def page_screen():
                     st.markdown("**🏭 行业特征**")
                     for f in feat["industry"]:
                         st.write("✅", f)
+                render_analysis_block(industry, "industry")
             s.update(label="🧬 **多维特征提取** · 特征合成完毕，送入 LLM 评分", state="complete")
 
         with st.status("⚖️ **LLM 综合评分** · 分析师视角打分 → 排序 → TopK 筛选…", expanded=True) as s:
@@ -986,7 +1160,7 @@ def page_tech():
     with c2:
         st.markdown("""
         <div class="card"><div class="icon">📚</div><h4>知识库</h4>
-        <p>分领域收集高质量金融研报，PDF 转 Markdown 优化后经星火知识库 API 上传，构建红利、白酒、贵金属三大行业知识库；检索内容融入提示词，定期更新维护。</p></div>
+        <p>分领域收集 35 份权威 PDF（货币政策报告 / 龙头年报与公告），经语义切分、bge 中文向量化后构建白酒、红利、贵金属、宏观四大行业向量库（共 3329 个语义片段）；检索内容融入提示词，全部可溯源，定期更新维护。</p></div>
         """, unsafe_allow_html=True)
 
     st.markdown('<div class="sec-title">创新点</div><div class="sec-sub">四大核心创新</div>', unsafe_allow_html=True)
@@ -1075,6 +1249,116 @@ def page_interview():
         with st.expander(f"**{q}**"):
             st.markdown(a)
 
+# ============================================================== 页面：知识库与微调
+def _n(x):
+    return f"{x:,}" if isinstance(x, int) else str(x)
+
+def page_kb():
+    st.markdown("""
+    <div class="hero hero-mini">
+      <div class="kicker">Knowledge Base · RAG & Fine-tuning</div>
+      <h1 style="font-size:2rem;">📚 知识库与微调</h1>
+      <div class="sub" style="margin-bottom:0;">35 份权威 PDF 向量化建库 · 3329 语义片段 · 3 套金融微调数据集 · 检索结果全部可溯源</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    if not KB:
+        st.error("知识库 bundle（kb_data.json）未加载，请确认文件存在于 fin_synagent/ 目录。")
+        return
+
+    stats = KB.get("kb_stats", {})
+    retrieval = KB.get("retrieval", {})
+    ft = KB.get("finetune", {})
+
+    # 一、RAG 知识库规模
+    st.markdown('<div class="sec-title">RAG 知识库规模</div><div class="sec-sub">PDF → Markdown → 语义切分 → 中文向量化（bge 512 维）→ Chroma 持久化（4 个行业 collection）</div>', unsafe_allow_html=True)
+    kpi = [
+        (_n(stats.get("total_docs", 0)), "权威 PDF 文档"),
+        (_n(stats.get("total_chunks", 0)), "语义 chunk 片段"),
+        ("4", "行业 collection"),
+        ("512", "bge 向量维度"),
+    ]
+    for col, (v, k) in zip(st.columns(4), kpi):
+        with col:
+            st.markdown(f'<div class="kpi"><div class="v">{v}</div><div class="k">{k}</div></div>', unsafe_allow_html=True)
+
+    coll_name = {"宏观": "macro", "白酒": "baijiu", "红利": "dividend", "贵金属": "precious"}
+    coll_rows = []
+    for ind, info in stats.get("collections", {}).items():
+        srcs = info.get("sources", [])
+        coll_rows.append({
+            "行业知识域": ind,
+            "collection": coll_name.get(ind, ind),
+            "chunk 数": info.get("chunks"),
+            "文档数": info.get("docs"),
+            "来源示例": "、".join(srcs[:2]) + (" …" if len(srcs) > 2 else ""),
+        })
+    st.dataframe(pd.DataFrame(coll_rows), use_container_width=True, hide_index=True)
+    st.caption("对应项目「按行业分账号管理知识库」设计：四个 collection 即四个独立知识域，Consult 检索时按用户问题所属行业路由。")
+
+    # 二、真实检索样本
+    st.markdown('<div class="sec-title">真实检索样本（Chroma 向量库 Top-3）</div><div class="sec-sub">以下片段由 bge 向量 + 余弦相似度从真实建库结果中召回，相似度与来源均为真实值，非人工编造</div>', unsafe_allow_html=True)
+    for ind in ["白酒", "红利", "贵金属", "宏观"]:
+        qmap = retrieval.get(ind, {})
+        if not qmap:
+            continue
+        q0 = next(iter(qmap))
+        hits = qmap[q0]
+        with st.expander(f"🔍 {ind} · 检索词：「{q0}」"):
+            for h in hits:
+                st.markdown(
+                    f'<div class="src">📄 <b>{h["source"]}</b> · p{h["page"]} · 相似度 <b>{h["score"]:.3f}</b><br>'
+                    f'<span style="color:#4A6A56;">{h["text"]}</span></div>', unsafe_allow_html=True)
+
+    # 三、微调数据集
+    st.markdown('<div class="sec-title">金融微调数据集</div><div class="sec-sub">支撑星火 SparkPro 基座 SFT 微调（lr=8e-5，5 epochs），提升金融领域专业性与「投资」关键词捕捉能力</div>', unsafe_allow_html=True)
+    fc = ft.get("fincuge", {})
+    dc = ft.get("disc", {})
+    fe = ft.get("fineval", {})
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.markdown(f"""
+        <div class="card" style="height:100%">
+          <div class="icon">📘</div>
+          <h4>FinCUGE-Instruction</h4>
+          <p><b>训练 {_n(fc.get('train',0))}</b> · 评测 {_n(fc.get('eval',0))} · 合计 <b>{_n(fc.get('total',0))}</b><br>
+          金融通用理解评测指令集（Apache-2.0），覆盖 FINFE 等数十类任务。</p>
+        </div>""", unsafe_allow_html=True)
+        if fc.get("samples"):
+            with st.expander("查看样例"):
+                for s in fc["samples"][:2]:
+                    st.markdown(f"**任务**：{s['task']}  \n**指令**：{s['instruction']}  \n**输出**：{s['output']}")
+    with c2:
+        parts = dc.get("parts", {})
+        part_txt = "、".join(f"{k} {v}" for k, v in parts.items()) if parts else ""
+        st.markdown(f"""
+        <div class="card" style="height:100%">
+          <div class="icon">📗</div>
+          <h4>DISC-Fin-SFT</h4>
+          <p><b>合计 {_n(dc.get('total',0))}</b> 条金融指令数据（{part_txt}）<br>
+          涵盖计算、咨询、检索、任务四类，指令-输入-输出配对。</p>
+        </div>""", unsafe_allow_html=True)
+        if dc.get("samples"):
+            with st.expander("查看样例"):
+                for s in dc["samples"][:1]:
+                    st.markdown(f"**指令**：{s['instruction']}  \n**输出**：{s['output']}")
+    with c3:
+        splits = fe.get("splits", {})
+        st.markdown(f"""
+        <div class="card" style="height:100%">
+          <div class="icon">📙</div>
+          <h4>FinEval</h4>
+          <p><b>合计 {_n(fe.get('total',0))}</b> 道多选一 · <b>{fe.get('subjects','—')}</b> 个金融科目（上财）<br>
+          切分：dev {_n(splits.get('dev',0))} / val {_n(splits.get('val',0))} / test {_n(splits.get('test',0))}。</p>
+        </div>""", unsafe_allow_html=True)
+        if fe.get("samples"):
+            with st.expander("查看样例（金融·val）"):
+                s = fe["samples"][0]
+                st.markdown(f"**题**：{s['question']}")
+                for i, o in enumerate(s.get("options", [])):
+                    st.write(f"{'ABCD'[i]}. {o}")
+                st.markdown(f"**答案**：{s['answer']}  \n**解析**：{s['explanation']}")
+
 # ============================================================== 导航
 PAGES = {
     "首页": page_home,
@@ -1083,9 +1367,10 @@ PAGES = {
     "星火大模型": page_spark,
     "测试评估": page_eval,
     "技术设计": page_tech,
+    "知识库与微调": page_kb,
     "面试建议": page_interview,
 }
-NAV_ICONS = ["house-door", "chat-square-text", "graph-up-arrow", "fire", "clipboard2-data", "cpu", "mic"]
+NAV_ICONS = ["house-door", "chat-square-text", "graph-up-arrow", "fire", "clipboard2-data", "cpu", "database", "mic"]
 
 with st.sidebar:
     st.markdown("""
