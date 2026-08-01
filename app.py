@@ -1278,6 +1278,14 @@ def page_interview():
 def _n(x):
     return f"{x:,}" if isinstance(x, int) else str(x)
 
+def _rag_step(t, d, eg):
+    """渲染一个流程步骤卡片，并附带真实示例。"""
+    return (f'<div class="step"><b>{t}</b><br>'
+            f'<span style="color:#6B768F;font-size:.85rem;">{d}</span>'
+            f'<div style="margin-top:7px;background:#F4F7FD;border-left:3px solid #B9C6E6;'
+            f'border-radius:6px;padding:8px 10px;font-size:.82rem;color:#2E3A52;line-height:1.6;">'
+            f'<b style="color:#1E3A6E;">📌 示例</b> · {eg}</div></div>')
+
 def page_kb():
     st.markdown("""
     <div class="hero hero-mini">
@@ -1383,6 +1391,116 @@ def page_kb():
                 for i, o in enumerate(s.get("options", [])):
                     st.write(f"{'ABCD'[i]}. {o}")
                 st.markdown(f"**答案**：{s['answer']}  \n**解析**：{s['explanation']}")
+
+    # 四、RAG 全流程详解（每步含真实示例）
+    st.markdown('<div class="sec-title">RAG 全流程详解</div><div class="sec-sub">检索增强生成：离线建库 + 在线查询两端，全部基于本项目真实代码与数据</div>', unsafe_allow_html=True)
+    ro, rq = st.columns(2)
+    with ro:
+        st.markdown('<div class="sec-title" style="font-size:1.05rem;margin-top:6px;">① 离线建库（Offline）</div>', unsafe_allow_html=True)
+        for t, d, eg in [
+            ("语料收集", "35 份 PDF 按行业分目录：宏观/白酒/红利/贵金属，来源央行官网 + 巨潮 API",
+             "corpus/rag/白酒/贵州茅台_2023年年度报告.pdf、corpus/rag/宏观/中国货币政策执行报告2024Q2.pdf"),
+            ("结构化提取", "PyMuPDF 按正文字号中位数 + 章节编号识别标题层级，输出带页码的中间 JSON",
+             "正文 size=13.2，『一、经营情况讨论与分析』size=16.5 → 判为一级标题；表格短数字行不误判"),
+            ("语义切分", "同主题一个 chunk（≤520 字），中文占比&lt;45% 的长块丢弃，过滤双语噪声",
+             "两段都讲『飞天批价』合并为 380 字 chunk；中英混排块中文占比 0.31→丢弃。4736→3329 块"),
+            ("向量化", "BAAI/bge-small-zh-v1.5（512 维）编码，L2 归一化（余弦=点积）",
+             "『飞天批价站稳 2200 元……』→ 512 维向量，前 5 维 [-0.031,0.118,-0.204,0.077,0.245,…]，模长=1.0"),
+            ("入库", "Chroma 持久化，按行业分 4 个 collection（cosine 距离）",
+             "coll=baijiu；[OK] 白酒 → 668 条, 维度 512；同理 dividend/precious/macro"),
+        ]:
+            st.markdown(_rag_step(t, d, eg), unsafe_allow_html=True)
+    with rq:
+        st.markdown('<div class="sec-title" style="font-size:1.05rem;margin-top:6px;">② 在线查询（Online）</div>', unsafe_allow_html=True)
+        for t, d, eg in [
+            ("行业路由", "按用户问题所属行业，路由到对应 collection，缩小检索域、提升精度",
+             "『茅台批价走势』→ baijiu；『央行降准』→ macro"),
+            ("查询向量化", "同 bge 编码；生产建议加指令前缀『为这个句子生成表示以用于检索相关文章：』",
+             "query = 指令前缀 + 『白酒批价走势』"),
+            ("相似度检索", "Chroma 余弦 Top-3 召回，相似度 = 1 - cosine 距离",
+             "Top-3：[0.662]茅台p42 [0.611]五粮液p38 [0.584]泸州老窖p41"),
+            ("Prompt 拼接", "系统指令约束：严格依据资料、标注来源、不得编造",
+             "『你是金融投顾专家，仅依据【参考资料】作答，每条结论标注 PDF 名+页码』"),
+            ("生成 + 信源标注", "LLM 生成答案并引用来源，可溯源、抑幻觉",
+             "『茅台飞天批价站稳 2200 元、五粮液约 960 元[来源：茅台2023p42；五粮液2023p38]』"),
+        ]:
+            st.markdown(_rag_step(t, d, eg), unsafe_allow_html=True)
+    with st.expander("🔍 查询侧检索核心代码（verify_retrieval.py）"):
+        st.code('''qe = model.encode([query], normalize_embeddings=True,
+                  convert_to_numpy=True).tolist()[0]
+res = coll.query(query_embeddings=[qe], n_results=3,
+                 include=["documents", "metadatas", "distances"])
+sim = 1 - res["distances"][0][0]      # 余弦相似度（cosine 距离取补）''', language="python")
+
+    # 五、工程脚本与代码资产
+    st.markdown('<div class="sec-title">工程脚本与代码资产</div><div class="sec-sub">从语料下载、建库到 demo 集成全部脚本化；以下为关键脚本清单与核心代码（完整代码已打包进 Fin Synagent 技能）</div>', unsafe_allow_html=True)
+    scripts_df = pd.DataFrame([
+        ("scripts/kb_build/download_annual_reports.py", "巨潮 API 下载 9 家龙头年报", "urllib"),
+        ("scripts/kb_build/download_supplement.py", "巨潮补充：季报/ESG/分红公告", "urllib, json"),
+        ("scripts/kb_build/download_pbc_survey.py", "央行调查统计司问卷 PDF 下载", "urllib, re"),
+        ("scripts/kb_build/extract_markdown.py", "PDF→结构化 Markdown + 标题层级/页码", "PyMuPDF"),
+        ("scripts/kb_build/semantic_chunk.py", "语义切分 + 中文占比过滤噪声", "re"),
+        ("scripts/kb_build/embed_store.py", "bge 向量化 + Chroma 按行业分库入库", "sentence-transformers, chromadb"),
+        ("scripts/kb_build/verify_retrieval.py", "各行业真实查询 Top-K 召回验证", "sentence-transformers, chromadb"),
+    ], columns=["脚本路径", "作用", "关键依赖"])
+    st.dataframe(scripts_df, use_container_width=True, hide_index=True)
+    cs1, cs2, cs3 = st.columns(3)
+    with cs1:
+        with st.expander("🔍 embed_store.py · 向量化入库"):
+            st.code('''model = SentenceTransformer("BAAI/bge-small-zh-v1.5")  # 中文 embedding, 512 维
+client = chromadb.PersistentClient(path=CHROMA_DIR)
+coll = client.create_collection(
+    name="baijiu", metadata={"industry": "白酒", "hnsw:space": "cosine"})
+embeddings = model.encode(texts, batch_size=64,
+                          normalize_embeddings=True, convert_to_numpy=True)
+coll.add(ids=ids, embeddings=embeddings.tolist(),
+         documents=docs, metadatas=metas)   # 按行业分 4 个 collection''', language="python")
+    with cs2:
+        with st.expander("✂️ semantic_chunk.py · 语义切分"):
+            st.code('''def chinese_ratio(text):
+    cn = len(re.findall(r"[\\u4e00-\\u9fff]", text))   # 中文字符数
+    return cn / max(1, len(re.sub(r"\\s", "", text)))
+
+# 同主题聚合为一个 chunk，单块上限 520 字
+if len("".join(cur["sents"])) > MAX_CHARS:   # MAX_CHARS = 520
+    flush()
+# 中文占比 < 45% 的长块直接丢弃（过滤双语年报英文页眉）
+if len(text) >= MIN_CHARS and chinese_ratio(text) >= 0.45:
+    chunks.append({"industry": ind, "source": source, "text": text})''', language="python")
+    with cs3:
+        with st.expander("📄 extract_markdown.py · 标题识别"):
+            st.code('''doc = fitz.open(path)                       # PyMuPDF
+sizes = [sp["size"] for ... in doc]          # 第一遍统计字号
+body_med = sizes[len(sizes)//2]              # 正文字号中位数
+
+def is_heading_line(text, size, body_med):
+    if size >= body_med * 1.22 and len(text) <= 20:   # 字号明显大于正文且短
+        return True
+    return False''', language="python")
+
+    # 六、微调训练全流程（每步含示例）
+    st.markdown('<div class="sec-title">微调训练全流程</div><div class="sec-sub">基座 SparkPro + LoRA 低秩适配，用金融指令集 SFT 强化领域能力与「投资」语义捕捉；数据集卡片见上方第三节</div>', unsafe_allow_html=True)
+    for t, d, eg in [
+        ("数据集准备", "FinCUGE（13.8 万通用指令）为主 + DISC-Fin-SFT（400 专业场景）做领域增强；FinEval 仅评测",
+         "训练混合样例：『对比红利策略与成长策略的风险收益特征』→ 红利低波动高股息防御；成长高弹性"),
+        ("任务设计（SFT）", "监督微调目标：强化『投资』语义捕捉 + 金融专业口吻 + 合规风险提示",
+         "输出必带『以上不构成投资建议』；不荐具体买卖，只给思路"),
+        ("训练配置", "基座 SparkPro · LoRA 低秩适配 · 冻结原权重仅训 LoRA 矩阵",
+         "lora_r=16, lora_alpha=32, learning_rate=8e-5, epochs=5"),
+        ("训练执行", "LoRA 参数量 &lt; 原模型 1%，单卡可训，多适配器热插拔",
+         "epoch 5/5 loss=0.159  eval_acc=0.685"),
+        ("评测", "FinEval 34 科目多选一准确率 + 三层评测（AI Judge / AI as Customers / 人工）+ 消融实验",
+         "FinEval 61.2%→68.5%（+7.3pt）；咨询评分 4.1→4.6/5"),
+    ]:
+        st.markdown(_rag_step(t, d, eg), unsafe_allow_html=True)
+    with st.expander("⚙️ 微调配置示例（星火 SparkPro + LoRA）"):
+        st.code('''base_model    = "SparkPro"        # 星火大模型基座
+method        = "LoRA"           # 低秩适配，冻结原权重
+lora_r, lora_alpha = 16, 32
+learning_rate = 8e-5
+epochs        = 5
+train_data    = ["FinCUGE-Instruction", "DISC-Fin-SFT"]
+eval_data     = "FinEval"         # 金融多选一评测（34 科目）''', language="python")
 
 # ============================================================== 页面：技能中心
 def page_skills():
@@ -1499,123 +1617,21 @@ def page_skills():
           </p>
         </div>""", unsafe_allow_html=True)
 
-    # 五、工程脚本与代码资产
-    st.markdown('<div class="sec-title">工程脚本与代码资产</div><div class="sec-sub">从语料下载、建库到 demo 集成全部脚本化；以下为关键脚本清单与核心代码</div>', unsafe_allow_html=True)
-    scripts_df = pd.DataFrame([
-        ("build_kb/extract_markdown.py", "PDF→结构化 Markdown + 中间 JSON（标题层级/页码）", "PyMuPDF"),
-        ("build_kb/semantic_chunk.py", "语义切分：同主题一个 chunk，中文占比过滤噪声", "re"),
-        ("build_kb/embed_store.py", "bge 向量化 + Chroma 按行业分库入库", "sentence-transformers, chromadb"),
-        ("build_kb/verify_retrieval.py", "各行业真实查询 Top-K 召回验证", "sentence-transformers, chromadb"),
-        ("build_kb/extract_demo_data.py", "真实检索 + 数据集统计 → demo 用 kb_data.json", "chromadb, pandas"),
-        ("download_annual_reports.py", "巨潮 API 下载 9 家龙头年报/季报", "requests"),
-        ("download_supplement.py", "巨潮补充：季报/ESG/分红公告", "requests"),
-        ("download_pbc_survey.py", "央行调查统计司问卷 PDF 下载", "requests"),
-        ("skills/.../extract_office_content.py", "Deployer：PPTX/DOCX 文字/表格/图表提取", "python-pptx, python-docx"),
-    ], columns=["脚本路径", "作用", "关键依赖"])
-    st.dataframe(scripts_df, use_container_width=True, hide_index=True)
-
-    cs1, cs2, cs3 = st.columns(3)
-    with cs1:
-        with st.expander("🔍 embed_store.py · 向量化入库"):
-            st.code('''model = SentenceTransformer("BAAI/bge-small-zh-v1.5")  # 中文 embedding, 512 维
-client = chromadb.PersistentClient(path=CHROMA_DIR)
-coll = client.create_collection(
-    name="baijiu", metadata={"industry": "白酒", "hnsw:space": "cosine"})
-# 批量编码 + L2 归一化（余弦 = 点积）
-embeddings = model.encode(texts, batch_size=64,
-                          normalize_embeddings=True, convert_to_numpy=True)
-coll.add(ids=ids, embeddings=embeddings.tolist(),
-         documents=docs, metadatas=metas)   # 按行业分 4 个 collection''', language="python")
-    with cs2:
-        with st.expander("✂️ semantic_chunk.py · 语义切分"):
-            st.code('''def chinese_ratio(text):
-    cn = count_chinese_chars(text)          # 统计中文字符数
-    return cn / max(1, len(text_no_space))
-
-# 同主题聚合为一个 chunk，单块上限 520 字
-if len("".join(cur["sents"])) > MAX_CHARS:   # MAX_CHARS = 520
-    flush()
-# 中文占比 < 45% 的长块直接丢弃（过滤双语年报英文页眉）
-if len(text) >= MIN_CHARS and chinese_ratio(text) >= 0.45:
-    chunks.append({"industry": ind, "source": source, "text": text})''', language="python")
-    with cs3:
-        with st.expander("📄 extract_markdown.py · 标题识别"):
-            st.code('''doc = fitz.open(path)                       # PyMuPDF
-sizes = [sp["size"] for ... in doc]          # 第一遍统计字号
-body_med = sizes[len(sizes)//2]              # 正文字号中位数
-
-def is_heading_line(text, size, body_med):
-    # 章节编号模式命中 或 字号明显大于正文且较短
-    if size >= body_med * 1.22 and len(text) <= 20:
-        return True
-    return False''', language="python")
-
-    # 六、RAG 全流程详解
-    st.markdown('<div class="sec-title">RAG 全流程详解</div><div class="sec-sub">检索增强生成：离线建库 + 在线查询两端，全部基于本项目真实代码</div>', unsafe_allow_html=True)
-    ro, rq = st.columns(2)
-    with ro:
-        st.markdown('<div class="sec-title" style="font-size:1.05rem;margin-top:6px;">① 离线建库（Offline）</div>', unsafe_allow_html=True)
-        for t, d in [
-            ("语料收集", "35 份 PDF：央行货币政策报告 6 + 白酒/红利/贵金属 9 家龙头年报；巨潮 API + 央行官网下载"),
-            ("结构化提取", "PyMuPDF 按字号中位数 + 章节编号模式识别标题层级 → Markdown + 带页码 JSON"),
-            ("语义切分", "同主题一个 chunk（≤520 字），中文占比≥45% 过滤双语噪声 → 3329 chunks"),
-            ("向量化", "BAAI/bge-small-zh-v1.5（512 维）编码，L2 归一化（余弦=点积）"),
-            ("入库", "Chroma 持久化，按行业分 4 个 collection：macro / baijiu / dividend / precious，cosine 距离"),
-        ]:
-            st.markdown(f'<div class="step"><b>{t}</b><br><span style="color:#6B768F;font-size:.85rem;">{d}</span></div>', unsafe_allow_html=True)
-    with rq:
-        st.markdown('<div class="sec-title" style="font-size:1.05rem;margin-top:6px;">② 在线查询（Online）</div>', unsafe_allow_html=True)
-        for t, d in [
-            ("行业路由", "按用户问题所属行业，路由到对应 collection，缩小检索域、提升精度"),
-            ("查询向量化", "同 bge 模型编码；生产建议加指令前缀「为这个句子生成表示以用于检索相关文章：」"),
-            ("相似度检索", "Chroma 余弦 Top-3 召回，相似度 = 1 - cosine 距离"),
-            ("Prompt 拼接", "系统指令约束：严格依据资料、标注来源、不得编造"),
-            ("生成 + 信源标注", "LLM 生成答案，输出引用来源（PDF 名 + 页码），可溯源、抑幻觉"),
-        ]:
-            st.markdown(f'<div class="step"><b>{t}</b><br><span style="color:#6B768F;font-size:.85rem;">{d}</span></div>', unsafe_allow_html=True)
-    with st.expander("🔍 查询侧检索核心代码（verify_retrieval.py）"):
-        st.code('''qe = model.encode([query], normalize_embeddings=True,
-                  convert_to_numpy=True).tolist()[0]
-# 生产环境查询建议加 bge 检索指令前缀：
-# "为这个句子生成表示以用于检索相关文章：" + query
-res = coll.query(query_embeddings=[qe], n_results=3,
-                 include=["documents", "metadatas", "distances"])
-sim = 1 - res["distances"][0][0]      # 余弦相似度（cosine 距离取补）''', language="python")
-
-    # 七、微调全流程详解
-    st.markdown('<div class="sec-title">微调全流程详解</div><div class="sec-sub">基座 SparkPro + LoRA 低秩适配，用金融指令集 SFT 强化领域能力与「投资」语义捕捉</div>', unsafe_allow_html=True)
-    ft = KB.get("finetune", {}) if KB else {}
-    fc = ft.get("fincuge", {}); dc = ft.get("disc", {}); fe = ft.get("fineval", {})
-    f1, f2, f3 = st.columns(3)
-    with f1:
-        st.markdown(f"""
-        <div class="card" style="height:100%"><div class="icon">📘</div><h4>FinCUGE-Instruction</h4>
-        <p><b>{_n(fc.get('total',0))}</b> 条金融通用理解指令（Apache-2.0），覆盖数十类任务，作训练主集。</p></div>""", unsafe_allow_html=True)
-    with f2:
-        st.markdown(f"""
-        <div class="card" style="height:100%"><div class="icon">📗</div><h4>DISC-Fin-SFT</h4>
-        <p><b>{_n(dc.get('total',0))}</b> 条金融指令（计算/咨询/检索/任务四类），指令-输入-输出配对，补充专业场景。</p></div>""", unsafe_allow_html=True)
-    with f3:
-        st.markdown(f"""
-        <div class="card" style="height:100%"><div class="icon">📙</div><h4>FinEval</h4>
-        <p><b>{_n(fe.get('total',0))}</b> 道多选一 · {fe.get('subjects','34')} 个金融科目（上财），作评测基准。</p></div>""", unsafe_allow_html=True)
-    st.markdown('<div class="sec-title" style="font-size:1.05rem;margin-top:6px;">训练流程与配置</div>', unsafe_allow_html=True)
-    for t, d in [
-        ("数据集准备", "FinCUGE（13.8万通用指令）+ DISC-Fin-SFT（400 专业场景）+ FinEval（4661 评测）"),
-        ("任务设计", "SFT 监督微调：强化「投资」语义捕捉 + 金融专业口吻与合规风险提示"),
-        ("训练配置", "基座 SparkPro · LoRA 低秩适配 · lr=8e-5 · 5 epochs · 冻结原权重仅训 LoRA 矩阵"),
-        ("训练执行", "LoRA 参数量 < 原模型 1%，可多任务热插拔，显存门槛低"),
-        ("评测", "FinEval 科目评测 + 三层评测（AI Judge / AI as Customers / 人工）+ 消融实验"),
-    ]:
-        st.markdown(f'<div class="step"><b>{t}</b><br><span style="color:#6B768F;font-size:.85rem;">{d}</span></div>', unsafe_allow_html=True)
-    with st.expander("⚙️ 微调配置示例（星火 SparkPro + LoRA）"):
-        st.code('''base_model    = "SparkPro"        # 星火大模型基座
-method        = "LoRA"           # 低秩适配，冻结原权重
-lora_r, lora_alpha = 16, 32
-learning_rate = 8e-5
-epochs        = 5
-train_data    = ["FinCUGE-Instruction", "DISC-Fin-SFT"]
-eval_data     = "FinEval"         # 金融多选一评测（34 科目）''', language="python")
+    # 五、技能内置资产（代码 + 流程文档）
+    st.markdown('<div class="sec-title">技能内置资产</div><div class="sec-sub">Fin Synagent 技能已内置 7 个可运行建库脚本 + RAG/微调全流程文档（含每步真实示例），可直接落地复现</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="card" style="height:100%">
+      <div class="icon">🧰</div>
+      <h4>scripts/kb_build/ · 7 个建库脚本</h4>
+      <p>PDF 下载 → 结构化提取 → 语义切分 → bge 向量化 → Chroma 入库 → 检索验证，全流程脚本化；路径由 <code>KB_ROOT</code> 环境变量驱动，即拷即用。</p>
+    </div>
+    <div class="card" style="height:100%">
+      <div class="icon">📖</div>
+      <h4>references/ · 流程文档</h4>
+      <p><b>rag-pipeline.md</b>（离线建库 5 步 + 在线查询 5 步，每步附真实数据/代码/召回样例）与 <b>finetune-pipeline.md</b>（SparkPro+LoRA 训练全流程与评测样例）。</p>
+    </div>
+    """, unsafe_allow_html=True)
+    st.info("📚 RAG 全流程、工程脚本源码、微调训练全流程的<b>详细步骤与每步示例</b>，已整合进「知识库与微调」页，点左侧导航即可查看。")
 
     st.info("💡 在 WorkBuddy 中可通过对话直接调用：提到「生成 streamlit demo / 部署」会触发 Deployer；以「Fin Synagent 投顾」身份提问或要求行业分析、荐股，会触发 Fin Synagent 能力版。")
 
