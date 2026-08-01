@@ -1225,6 +1225,26 @@ INTERVIEW_TECH = [
      "① **AI as Judge**：第三方大模型从相关性、完整性、逻辑性三个维度 0-30 分批量打分，并用 t 检验做显著性验证（本项目 p=0.017 显著优于 SOTA）；② **AI as Customers**：生成 20 个不同投资水平的模拟用户身份提问并反馈评分，验证普适性；③ **人工交叉评测**：金融专业研究生按统一标准（单题满分 30，覆盖行业数据、产业链分析、风险提示、无幻觉四点）主观评测。另配合**消融实验**验证微调与工作流组件的各自贡献。"),
 ]
 
+INTERVIEW_RAG_FT = [
+    ("RAG 中常见的文档切分（Chunking）策略有哪些？各有什么优缺点？",
+     "① **固定长度切分**（按字符/token 滑动窗口）：实现简单、长度可控，但容易切断语义（一句话被拆两半）；② **按句子/段落切分**：保留自然边界，但长短不均；③ **语义切分**（本项目采用）：按标题层级 + 同主题聚合，把同一小节作为一整个 chunk（≤520 字），语义完整、检索命中更准，缺点是对无标题文档要回退按页切分。\n\n**本项目权衡**：语义切分 + 中文占比≥45% 过滤双语年报的英文页眉噪声，最终 4736 → 3329 个高质量 chunk，召回质量明显提升。"),
+    ("为什么选 bge 这类稠密向量模型做 Embedding？和 BM25 稀疏检索怎么选？",
+     "稠密向量（bge / 检索式 BERT）能把语义相近但字面不同的句子映射到近邻空间，理解「降息」与「货币政策宽松」的关联；BM25 基于词面匹配，对同义改写、专业术语泛化差。\n\n本项目中文金融场景用 **BAAI/bge-small-zh-v1.5**（512 维，中文 SOTA 级）；生产查询端建议加 bge 专用检索指令前缀提升召回。实际落地常做 **混合检索（稠密 + BM25 召回再融合）** 兼顾字面与语义。"),
+    ("RAG 检索阶段为什么用余弦相似度？如何进一步提升检索召回与精度？",
+     "向量已做 L2 归一化（normalize_embeddings），余弦相似度等价于点积，计算快且不受向量长度影响。\n\n**提升手段**：① 查询改写 / HyDE 假设性回答；② **重排（Rerank）**：向量召回 Top-K×N 后用交叉编码器精排取 Top-K；③ **metadata 过滤**（本项目按行业路由到对应 collection 缩小域）；④ 多路召回融合。本项目查询端先按问题所属行业路由到 macro/baijiu/dividend/precious 之一，再做 Top-3 余弦检索。"),
+    ("RAG 和微调（Fine-tuning）各自解决什么问题？什么场景该用哪个？",
+     "**RAG 解决「知识」问题**——让模型访问最新/私域/外部知识、抑制幻觉、答案可溯源，适合知识频繁更新、需引用出处的场景（如投顾研报问答）。**微调解决「能力/风格」问题**——让模型学会特定任务格式、专业口吻、领域推理，适合固定任务、低延迟、风格一致。\n\n**经验法则：先 RAG 后微调**；知识类优先 RAG，能力类才上微调。本项目两者结合：RAG 注入行业知识 + 星火 SFT 微调强化「投资」语义捕捉与金融专业性。"),
+    ("如何评估一个 RAG 系统的效果？有哪些关键指标？",
+     "分两层：① **检索质量**：召回率 Recall@K、命中率 Hit Rate、NDCG；② **生成质量**：忠实度 Faithfulness（是否严格来自检索内容、有无编造）、答案相关性 Answer Relevancy、上下文利用率。\n\n本项目配套三层评测：AI as Judge 打分 + AI as Customers 模拟用户 + 人工交叉评测，并用 t 检验验证显著性（p=0.017）。工程上建议用 **RAGAS** 等框架自动化这些指标。"),
+    ("全量微调和 LoRA / QLoRA 有什么区别？QLoRA 是怎么把显存压下来的？",
+     "**全量微调**更新全部权重，效果上限高但显存/算力昂贵、易灾难性遗忘；**LoRA** 冻结原权重，在注意力线性层旁路插入低秩矩阵 A(降维)→B(升维)，只训这俩小矩阵，参数量可降至 <1%，可多任务热插拔。**QLoRA** 叠加：4-bit NF4 量化基座 + 分页优化器 + 双重量化，把 65B 级模型微调压到单张消费级显卡。\n\n本项目星火平台微调采用 LoRA（lr=8e-5，5 epochs），不改动基座权重。"),
+    ("微调时如何防止「灾难性遗忘」（Catastrophic Forgetting）？",
+     "① 优先用 **LoRA/适配器**而非全量微调，原权重被冻结；② **混合训练数据**：领域数据中加入一定比例通用指令（如 FinCUGE 之外补通用 SFT 样本）保持通用能力；③ 控制学习率（本项目 8e-5 偏保守）与轮次（5 epochs 防过拟合）；④ 训练后做 **通用能力回测**（MMLU / C-Eval 类基准）。本项目评测侧用 FinEval 测专业度、同时保留三层评测验证未损害对话质量。"),
+    ("构建高质量 SFT 数据集有哪些要点？数据量重要还是质量重要？",
+     "**质量 >> 数量**。要点：① 任务覆盖均衡（本项目三类：FinCUGE 通用指令 13.8 万 + DISC-Fin-SFT 计算/咨询/检索/任务 400 + FinEval 评测 4661）；② 指令-输入-输出三元组格式规范、答案无幻觉；③ 去重与清洗（剔低质、噪声、泄露答案的样例）；④ 难度与风格多样。\n\n**本项目解耦设计**：知识（RAG）走检索、能力（SFT）走微调，避免把知识硬编码进权重导致更新困难。"),
+]
+
+
 def page_interview():
     st.markdown("""
     <div class="hero hero-mini">
@@ -1246,6 +1266,11 @@ def page_interview():
 
     st.markdown('<div class="sec-title">第二部分 · 技术高频问答</div><div class="sec-sub">围绕本项目核心技术点：Multi-Agent · RAG · 微调 / LoRA · 幻觉抑制 · 评测体系</div>', unsafe_allow_html=True)
     for q, a in INTERVIEW_TECH:
+        with st.expander(f"**{q}**"):
+            st.markdown(a)
+
+    st.markdown('<div class="sec-title">第三部分 · RAG 与微调专项面试题</div><div class="sec-sub">聚焦检索增强生成与模型微调两大核心技术，全部答案锚定本项目真实实现</div>', unsafe_allow_html=True)
+    for q, a in INTERVIEW_RAG_FT:
         with st.expander(f"**{q}**"):
             st.markdown(a)
 
@@ -1473,6 +1498,124 @@ def page_skills():
           🐍 <b>extract_office_content.py</b> — PPTX/DOCX 通用提取脚本
           </p>
         </div>""", unsafe_allow_html=True)
+
+    # 五、工程脚本与代码资产
+    st.markdown('<div class="sec-title">工程脚本与代码资产</div><div class="sec-sub">从语料下载、建库到 demo 集成全部脚本化；以下为关键脚本清单与核心代码</div>', unsafe_allow_html=True)
+    scripts_df = pd.DataFrame([
+        ("build_kb/extract_markdown.py", "PDF→结构化 Markdown + 中间 JSON（标题层级/页码）", "PyMuPDF"),
+        ("build_kb/semantic_chunk.py", "语义切分：同主题一个 chunk，中文占比过滤噪声", "re"),
+        ("build_kb/embed_store.py", "bge 向量化 + Chroma 按行业分库入库", "sentence-transformers, chromadb"),
+        ("build_kb/verify_retrieval.py", "各行业真实查询 Top-K 召回验证", "sentence-transformers, chromadb"),
+        ("build_kb/extract_demo_data.py", "真实检索 + 数据集统计 → demo 用 kb_data.json", "chromadb, pandas"),
+        ("download_annual_reports.py", "巨潮 API 下载 9 家龙头年报/季报", "requests"),
+        ("download_supplement.py", "巨潮补充：季报/ESG/分红公告", "requests"),
+        ("download_pbc_survey.py", "央行调查统计司问卷 PDF 下载", "requests"),
+        ("skills/.../extract_office_content.py", "Deployer：PPTX/DOCX 文字/表格/图表提取", "python-pptx, python-docx"),
+    ], columns=["脚本路径", "作用", "关键依赖"])
+    st.dataframe(scripts_df, use_container_width=True, hide_index=True)
+
+    cs1, cs2, cs3 = st.columns(3)
+    with cs1:
+        with st.expander("🔍 embed_store.py · 向量化入库"):
+            st.code('''model = SentenceTransformer("BAAI/bge-small-zh-v1.5")  # 中文 embedding, 512 维
+client = chromadb.PersistentClient(path=CHROMA_DIR)
+coll = client.create_collection(
+    name="baijiu", metadata={"industry": "白酒", "hnsw:space": "cosine"})
+# 批量编码 + L2 归一化（余弦 = 点积）
+embeddings = model.encode(texts, batch_size=64,
+                          normalize_embeddings=True, convert_to_numpy=True)
+coll.add(ids=ids, embeddings=embeddings.tolist(),
+         documents=docs, metadatas=metas)   # 按行业分 4 个 collection''', language="python")
+    with cs2:
+        with st.expander("✂️ semantic_chunk.py · 语义切分"):
+            st.code('''def chinese_ratio(text):
+    cn = count_chinese_chars(text)          # 统计中文字符数
+    return cn / max(1, len(text_no_space))
+
+# 同主题聚合为一个 chunk，单块上限 520 字
+if len("".join(cur["sents"])) > MAX_CHARS:   # MAX_CHARS = 520
+    flush()
+# 中文占比 < 45% 的长块直接丢弃（过滤双语年报英文页眉）
+if len(text) >= MIN_CHARS and chinese_ratio(text) >= 0.45:
+    chunks.append({"industry": ind, "source": source, "text": text})''', language="python")
+    with cs3:
+        with st.expander("📄 extract_markdown.py · 标题识别"):
+            st.code('''doc = fitz.open(path)                       # PyMuPDF
+sizes = [sp["size"] for ... in doc]          # 第一遍统计字号
+body_med = sizes[len(sizes)//2]              # 正文字号中位数
+
+def is_heading_line(text, size, body_med):
+    # 章节编号模式命中 或 字号明显大于正文且较短
+    if size >= body_med * 1.22 and len(text) <= 20:
+        return True
+    return False''', language="python")
+
+    # 六、RAG 全流程详解
+    st.markdown('<div class="sec-title">RAG 全流程详解</div><div class="sec-sub">检索增强生成：离线建库 + 在线查询两端，全部基于本项目真实代码</div>', unsafe_allow_html=True)
+    ro, rq = st.columns(2)
+    with ro:
+        st.markdown('<div class="sec-title" style="font-size:1.05rem;margin-top:6px;">① 离线建库（Offline）</div>', unsafe_allow_html=True)
+        for t, d in [
+            ("语料收集", "35 份 PDF：央行货币政策报告 6 + 白酒/红利/贵金属 9 家龙头年报；巨潮 API + 央行官网下载"),
+            ("结构化提取", "PyMuPDF 按字号中位数 + 章节编号模式识别标题层级 → Markdown + 带页码 JSON"),
+            ("语义切分", "同主题一个 chunk（≤520 字），中文占比≥45% 过滤双语噪声 → 3329 chunks"),
+            ("向量化", "BAAI/bge-small-zh-v1.5（512 维）编码，L2 归一化（余弦=点积）"),
+            ("入库", "Chroma 持久化，按行业分 4 个 collection：macro / baijiu / dividend / precious，cosine 距离"),
+        ]:
+            st.markdown(f'<div class="step"><b>{t}</b><br><span style="color:#6B768F;font-size:.85rem;">{d}</span></div>', unsafe_allow_html=True)
+    with rq:
+        st.markdown('<div class="sec-title" style="font-size:1.05rem;margin-top:6px;">② 在线查询（Online）</div>', unsafe_allow_html=True)
+        for t, d in [
+            ("行业路由", "按用户问题所属行业，路由到对应 collection，缩小检索域、提升精度"),
+            ("查询向量化", "同 bge 模型编码；生产建议加指令前缀「为这个句子生成表示以用于检索相关文章：」"),
+            ("相似度检索", "Chroma 余弦 Top-3 召回，相似度 = 1 - cosine 距离"),
+            ("Prompt 拼接", "系统指令约束：严格依据资料、标注来源、不得编造"),
+            ("生成 + 信源标注", "LLM 生成答案，输出引用来源（PDF 名 + 页码），可溯源、抑幻觉"),
+        ]:
+            st.markdown(f'<div class="step"><b>{t}</b><br><span style="color:#6B768F;font-size:.85rem;">{d}</span></div>', unsafe_allow_html=True)
+    with st.expander("🔍 查询侧检索核心代码（verify_retrieval.py）"):
+        st.code('''qe = model.encode([query], normalize_embeddings=True,
+                  convert_to_numpy=True).tolist()[0]
+# 生产环境查询建议加 bge 检索指令前缀：
+# "为这个句子生成表示以用于检索相关文章：" + query
+res = coll.query(query_embeddings=[qe], n_results=3,
+                 include=["documents", "metadatas", "distances"])
+sim = 1 - res["distances"][0][0]      # 余弦相似度（cosine 距离取补）''', language="python")
+
+    # 七、微调全流程详解
+    st.markdown('<div class="sec-title">微调全流程详解</div><div class="sec-sub">基座 SparkPro + LoRA 低秩适配，用金融指令集 SFT 强化领域能力与「投资」语义捕捉</div>', unsafe_allow_html=True)
+    ft = KB.get("finetune", {}) if KB else {}
+    fc = ft.get("fincuge", {}); dc = ft.get("disc", {}); fe = ft.get("fineval", {})
+    f1, f2, f3 = st.columns(3)
+    with f1:
+        st.markdown(f"""
+        <div class="card" style="height:100%"><div class="icon">📘</div><h4>FinCUGE-Instruction</h4>
+        <p><b>{_n(fc.get('total',0))}</b> 条金融通用理解指令（Apache-2.0），覆盖数十类任务，作训练主集。</p></div>""", unsafe_allow_html=True)
+    with f2:
+        st.markdown(f"""
+        <div class="card" style="height:100%"><div class="icon">📗</div><h4>DISC-Fin-SFT</h4>
+        <p><b>{_n(dc.get('total',0))}</b> 条金融指令（计算/咨询/检索/任务四类），指令-输入-输出配对，补充专业场景。</p></div>""", unsafe_allow_html=True)
+    with f3:
+        st.markdown(f"""
+        <div class="card" style="height:100%"><div class="icon">📙</div><h4>FinEval</h4>
+        <p><b>{_n(fe.get('total',0))}</b> 道多选一 · {fe.get('subjects','34')} 个金融科目（上财），作评测基准。</p></div>""", unsafe_allow_html=True)
+    st.markdown('<div class="sec-title" style="font-size:1.05rem;margin-top:6px;">训练流程与配置</div>', unsafe_allow_html=True)
+    for t, d in [
+        ("数据集准备", "FinCUGE（13.8万通用指令）+ DISC-Fin-SFT（400 专业场景）+ FinEval（4661 评测）"),
+        ("任务设计", "SFT 监督微调：强化「投资」语义捕捉 + 金融专业口吻与合规风险提示"),
+        ("训练配置", "基座 SparkPro · LoRA 低秩适配 · lr=8e-5 · 5 epochs · 冻结原权重仅训 LoRA 矩阵"),
+        ("训练执行", "LoRA 参数量 < 原模型 1%，可多任务热插拔，显存门槛低"),
+        ("评测", "FinEval 科目评测 + 三层评测（AI Judge / AI as Customers / 人工）+ 消融实验"),
+    ]:
+        st.markdown(f'<div class="step"><b>{t}</b><br><span style="color:#6B768F;font-size:.85rem;">{d}</span></div>', unsafe_allow_html=True)
+    with st.expander("⚙️ 微调配置示例（星火 SparkPro + LoRA）"):
+        st.code('''base_model    = "SparkPro"        # 星火大模型基座
+method        = "LoRA"           # 低秩适配，冻结原权重
+lora_r, lora_alpha = 16, 32
+learning_rate = 8e-5
+epochs        = 5
+train_data    = ["FinCUGE-Instruction", "DISC-Fin-SFT"]
+eval_data     = "FinEval"         # 金融多选一评测（34 科目）''', language="python")
 
     st.info("💡 在 WorkBuddy 中可通过对话直接调用：提到「生成 streamlit demo / 部署」会触发 Deployer；以「Fin Synagent 投顾」身份提问或要求行业分析、荐股，会触发 Fin Synagent 能力版。")
 
