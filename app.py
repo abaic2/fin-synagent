@@ -1771,8 +1771,8 @@ def page_tech_base():
 # 导航分组（按受众）：产品体验 / 技术底座 / 附录参考
 NAV_GROUPS = [
     ("产品体验", ["首页", "智能咨询", "智能荐股"], ["house-door", "chat-square-text", "graph-up-arrow"]),
-    ("技术底座", ["技术底座", "面试建议"], ["cpu", "mic"]),
-    ("附录参考", ["专有名词解释", "技能中心"], ["book", "boxes"]),
+    ("技术底座", ["技术底座", "技能中心"], ["cpu", "boxes"]),
+    ("附录参考", ["专有名词解释", "面试建议"], ["book", "mic"]),
 ]
 
 def _select_nav(page):
@@ -1806,6 +1806,11 @@ with st.sidebar:
             "border-radius": "14px", "border": "1px solid rgba(201,162,39,0.35)",
         },
         "icon": {"color": "#E8C766", "font-size": "16px"},
+        "menu-title": {
+            "font-size": "0.95rem", "font-weight": "800",
+            "color": "#FFE9A8", "letter-spacing": "0.12em",
+            "padding": "12px 12px 4px",
+        },
         "nav-link": {
             "font-size": "16px", "font-family": "Noto Sans SC", "text-align": "left",
             "margin": "4px 0", "padding": "10px 16px", "border-radius": "12px",
