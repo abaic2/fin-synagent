@@ -271,6 +271,11 @@ div[data-testid="stSidebar"] .stButton > button[kind="primary"] {{
   font-family:"Noto Serif SC",serif;
 }}
 .gloss-card .gd {{ font-size:.92rem; color:#3A4866; line-height:1.65; }}
+.gloss-card .gt-star {{ color:{GOLD}; }}
+.resume-card {{
+  background:#fff; border:1px solid #E3E8F4; border-radius:12px; padding:14px 16px;
+  font-size:.92rem; line-height:1.8; color:#2E3A52; box-shadow:0 2px 10px rgba(20,40,80,.05);
+}}
 @media (max-width: 720px) {{ .gloss-grid {{ grid-template-columns: 1fr; }} }}
 </style>
 """, unsafe_allow_html=True)
@@ -1271,7 +1276,7 @@ INTERVIEW_BEHAVIOR = [
      "市面上普通 AI 只能简单回答投资问题，存在分析片面、数据不实、普通散户难以理解的问题，我主动提出要搭建一套完整的 AI 金融投研辅助工具。",
      "独立完成一套多智能体协同智能投顾系统，达到专业分析师级别的回答质量。",
      "① 将大目标拆解为 Consult 咨询与 Screen 荐股两大模块；② 自学多智能体工作流、RAG 检索增强与 SFT 微调技术；③ 从 Fin 1.0 到 3.0 持续迭代，每个版本针对暴露的问题定向优化。",
-     "系统在 AI as Judge 评测中取得 28.41/30 的平均分，统计检验显著优于 Kimi、Spark 等 SOTA 模型（p=0.017），并成功部署上线。"),
+     "系统在 AI as Judge 评测中取得 28.41/30 的平均分，统计检验显著优于 Kimi、Spark 等 SOTA 模型（p=0.017），并成功部署上线。", True),
     ("讲一个你面对大量繁杂信息、多重问题，快速梳理关键、分清轻重缓急解决问题的案例。",
      "搭建系统时涉及行业资料整理、咨询逻辑设计、选股规则、效果测试等多块内容，初期团队思路分散，各模块输出标准不一。",
      "统一各模块的输出标准与接口约定，保证系统整体协同推进。",
@@ -1305,10 +1310,10 @@ INTERVIEW_BEHAVIOR = [
 ]
 
 INTERVIEW_TECH_RAG = [
-    ("什么是 RAG？完整流程是什么？有什么作用？⭐面试高频",
-     "RAG（Retrieval-Augmented Generation，检索增强生成）是在生成前先检索外部知识、把检索结果拼入提示词再生成答案的技术。\n\n**完整流程（7 步）**：① 文档切分（本项目用语义段落切分 Semantic Chunking，同一主题划为一个 Chunk）→ ② 向量化（星火 Embedding 模型编码）→ ③ 存入向量数据库（Chroma）→ ④ 查询向量化 → ⑤ 相似度检索（余弦相似度 Top-K）→ ⑥ Prompt 拼接（系统指令约束：严格依据资料、标注来源）→ ⑦ 生成答案。\n\n**作用**：① 解决模型知识不新的问题；② 解决知识不全的问题、避免幻觉；③ 让模型能访问私域 / 内部数据。"),
+    ("什么是 RAG？完整流程是什么？有什么作用？",
+     "RAG（Retrieval-Augmented Generation，检索增强生成）是在生成前先检索外部知识、把检索结果拼入提示词再生成答案的技术。\n\n**完整流程（7 步）**：① 文档切分（本项目用语义段落切分 Semantic Chunking，同一主题划为一个 Chunk）→ ② 向量化（星火 Embedding 模型编码）→ ③ 存入向量数据库（Chroma）→ ④ 查询向量化 → ⑤ 相似度检索（余弦相似度 Top-K）→ ⑥ Prompt 拼接（系统指令约束：严格依据资料、标注来源）→ ⑦ 生成答案。\n\n**作用**：① 解决模型知识不新的问题；② 解决知识不全的问题、避免幻觉；③ 让模型能访问私域 / 内部数据。", True),
     ("什么是模型幻觉？产生原因是什么？如何抑制？",
-     "幻觉是大模型生成看似合理但与事实不符内容的现象。\n\n**典型表现**：① 编造事实（把不存在的论文、新闻、数据说成真的）；② 张冠李戴（把 A 的结论安到 B 头上）；③ 虚构引用。\n\n**原因**：语言流畅性优先于真实性；缺少实时知识核对机制。\n\n**本项目对策**：RAG 知识库约束回答依据 + Search Agent 联网检索 + Verify Agent 事实校验，输出与网络数据、知识库数据双重比对。"),
+     "幻觉是大模型生成看似合理但与事实不符内容的现象。\n\n**典型表现**：① 编造事实（把不存在的论文、新闻、数据说成真的）；② 张冠李戴（把 A 的结论安到 B 头上）；③ 虚构引用。\n\n**原因**：语言流畅性优先于真实性；缺少实时知识核对机制。\n\n**本项目对策**：RAG 知识库约束回答依据 + Search Agent 联网检索 + Verify Agent 事实校验，输出与网络数据、知识库数据双重比对。", True),
     ("RAG 中常见的文档切分（Chunking）策略有哪些？各有什么优缺点？",
      "① **固定长度切分**（按字符/token 滑动窗口）：实现简单、长度可控，但容易切断语义（一句话被拆两半）；② **按句子/段落切分**：保留自然边界，但长短不均；③ **语义切分**（本项目采用）：按标题层级 + 同主题聚合，把同一小节作为一整个 chunk（≤520 字），语义完整、检索命中更准，缺点是对无标题文档要回退按页切分。\n\n**本项目权衡**：语义切分 + 中文占比≥45% 过滤双语年报的英文页眉噪声，最终 4736 → 3329 个高质量 chunk，召回质量明显提升。"),
     ("为什么选 bge 这类稠密向量模型做 Embedding？和 BM25 稀疏检索怎么选？",
@@ -1318,7 +1323,7 @@ INTERVIEW_TECH_RAG = [
     ("RAG 和微调（Fine-tuning）各自解决什么问题？什么场景该用哪个？",
      "**RAG 解决「知识」问题**——让模型访问最新/私域/外部知识、抑制幻觉、答案可溯源，适合知识频繁更新、需引用出处的场景（如投顾研报问答）。**微调解决「能力/风格」问题**——让模型学会特定任务格式、专业口吻、领域推理，适合固定任务、低延迟、风格一致。\n\n**经验法则：先 RAG 后微调**；知识类优先 RAG，能力类才上微调。本项目两者结合：RAG 注入行业知识 + 星火 SFT 微调强化「投资」语义捕捉与金融专业性。"),
     ("如何评估一个 RAG 系统的效果？有哪些关键指标？",
-     "分两层：① **检索质量**：召回率 Recall@K、命中率 Hit Rate、NDCG；② **生成质量**：忠实度 Faithfulness（是否严格来自检索内容、有无编造）、答案相关性 Answer Relevancy、上下文利用率。\n\n本项目配套三层评测：AI as Judge 打分 + AI as Customers 模拟用户 + 人工交叉评测，并用 t 检验验证显著性（p=0.017）。工程上建议用 **RAGAS** 等框架自动化这些指标。"),
+     "分两层：① **检索质量**：召回率 Recall@K、命中率 Hit Rate、NDCG；② **生成质量**：忠实度 Faithfulness（是否严格来自检索内容、有无编造）、答案相关性 Answer Relevancy、上下文利用率。\n\n本项目配套三层评测：AI as Judge 打分 + AI as Customers 模拟用户 + 人工交叉评测，并用 t 检验验证显著性（p=0.017）。工程上建议用 **RAGAS** 等框架自动化这些指标。", True),
     ("RAG 系统如何保证答案的「可追溯 / 可引用」？",
      "核心是把检索命中的**片段元数据（来源文件名、页码、章节）**一并回传，生成时在答案中标注引用，如「（来源：贵州茅台 2023 年报 p.23）」。\n\n本项目在页面展示每一条命中都带 source / page / 相似度，知识库页还提供「相似度置信度分布」与「行业纯度」指标，让评审直接看到检索是否命中正确文档集合，实现端到端可溯源。"),
     ("什么是 RAG 的「上下文污染 / 噪声」问题？如何缓解？",
@@ -1329,11 +1334,11 @@ INTERVIEW_TECH_RAG = [
 
 INTERVIEW_TECH_FT = [
     ("什么是微调？什么是 LoRA 微调？",
-     "**微调（Fine-tune）**：通用大模型见过海量数据但不懂你的专属任务与风格，微调就是用领域数据继续训练，让模型掌握专属能力。本项目用证券/基金从业题库 + FinCUGE 数据集 + 行业研报问答对，在星火平台对 Spark 模型做 SFT 微调。\n\n**LoRA**：不改动原模型任何权重，在 Transformer 注意力模块旁额外插入两个极小的低秩矩阵 A、B，只训练这两个矩阵。\n\n**LoRA 优势**：① 显存门槛低；② 训练速度快；③ 权重可随时开关切换。\n\n**步骤**：准备专属数据集 → 冻结原始权重、仅开启 LoRA 矩阵训练 → 少量轮次训练收敛（本项目 lr=8e-5，5 epochs）→ 保存并绑定 LoRA 权重发布。"),
+     "**微调（Fine-tune）**：通用大模型见过海量数据但不懂你的专属任务与风格，微调就是用领域数据继续训练，让模型掌握专属能力。本项目用证券/基金从业题库 + FinCUGE 数据集 + 行业研报问答对，在星火平台对 Spark 模型做 SFT 微调。\n\n**LoRA**：不改动原模型任何权重，在 Transformer 注意力模块旁额外插入两个极小的低秩矩阵 A、B，只训练这两个矩阵。\n\n**LoRA 优势**：① 显存门槛低；② 训练速度快；③ 权重可随时开关切换。\n\n**步骤**：准备专属数据集 → 冻结原始权重、仅开启 LoRA 矩阵训练 → 少量轮次训练收敛（本项目 lr=8e-5，5 epochs）→ 保存并绑定 LoRA 权重发布。", True),
     ("全量微调和 LoRA / QLoRA 有什么区别？QLoRA 是怎么把显存压下来的？",
-     "**全量微调**更新全部权重，效果上限高但显存/算力昂贵、易灾难性遗忘；**LoRA** 冻结原权重，在注意力线性层旁路插入低秩矩阵 A(降维)→B(升维)，只训这俩小矩阵，参数量可降至 <1%，可多任务热插拔。**QLoRA** 叠加：4-bit NF4 量化基座 + 分页优化器 + 双重量化，把 65B 级模型微调压到单张消费级显卡。\n\n本项目星火平台微调采用 LoRA（lr=8e-5，5 epochs），不改动基座权重。"),
+     "**全量微调**更新全部权重，效果上限高但显存/算力昂贵、易灾难性遗忘；**LoRA** 冻结原权重，在注意力线性层旁路插入低秩矩阵 A(降维)→B(升维)，只训这俩小矩阵，参数量可降至 <1%，可多任务热插拔。**QLoRA** 叠加：4-bit NF4 量化基座 + 分页优化器 + 双重量化，把 65B 级模型微调压到单张消费级显卡。\n\n本项目星火平台微调采用 LoRA（lr=8e-5，5 epochs），不改动基座权重。", True),
     ("微调时如何防止「灾难性遗忘」（Catastrophic Forgetting）？",
-     "① 优先用 **LoRA/适配器**而非全量微调，原权重被冻结；② **混合训练数据**：领域数据中加入一定比例通用指令（如 FinCUGE 之外补通用 SFT 样本）保持通用能力；③ 控制学习率（本项目 8e-5 偏保守）与轮次（5 epochs 防过拟合）；④ 训练后做 **通用能力回测**（MMLU / C-Eval 类基准）。本项目评测侧用 FinEval 测专业度、同时保留三层评测验证未损害对话质量。"),
+     "① 优先用 **LoRA/适配器**而非全量微调，原权重被冻结；② **混合训练数据**：领域数据中加入一定比例通用指令（如 FinCUGE 之外补通用 SFT 样本）保持通用能力；③ 控制学习率（本项目 8e-5 偏保守）与轮次（5 epochs 防过拟合）；④ 训练后做 **通用能力回测**（MMLU / C-Eval 类基准）。本项目评测侧用 FinEval 测专业度、同时保留三层评测验证未损害对话质量。", True),
     ("构建高质量 SFT 数据集有哪些要点？数据量重要还是质量重要？",
      "**质量 >> 数量**。要点：① 任务覆盖均衡（本项目三类：FinCUGE 通用指令 13.8 万 + DISC-Fin-SFT 计算/咨询/检索/任务 400 + FinEval 评测 4661）；② 指令-输入-输出三元组格式规范、答案无幻觉；③ 去重与清洗（剔低质、噪声、泄露答案的样例）；④ 难度与风格多样。\n\n**本项目解耦设计**：知识（RAG）走检索、能力（SFT）走微调，避免把知识硬编码进权重导致更新困难。"),
     ("微调训练数据一般从哪来？如何做指令数据的自动化构造？",
@@ -1346,51 +1351,77 @@ INTERVIEW_TECH_FT = [
 
 INTERVIEW_TECH_GEN = [
     ("什么是 Agent？Agent 和 LLM 有什么区别？",
-     "Agent 是能够感知信息、做出决策并执行行动以完成目标的智能系统。\n\n**LLM = 只负责回答/生成**；**Agent = 能思考 + 能规划 + 能行动**。Agent 以 LLM 为大脑，叠加任务规划、工具调用（搜索、数据库、API）与记忆能力，可以自主完成多步骤复杂任务。"),
+     "Agent 是能够感知信息、做出决策并执行行动以完成目标的智能系统。\n\n**LLM = 只负责回答/生成**；**Agent = 能思考 + 能规划 + 能行动**。Agent 以 LLM 为大脑，叠加任务规划、工具调用（搜索、数据库、API）与记忆能力，可以自主完成多步骤复杂任务。", True),
     ("什么是 Prompt Engineering？高质量 Prompt 的基本结构？",
      "Prompt Engineering 本质是用自然语言精确描述需求，引导模型输出高质量结果。\n\n**高质量 Prompt 四要素**：① 角色（Role：你是资深金融分析师）；② 任务（Task：明确要做什么）；③ 上下文 / 约束（依据给定资料、不得编造、标注来源）；④ 输出格式（分点、表格、JSON 等）。\n\n本项目 Screen 的评分 Prompt 即采用『资深股票分析师』角色 + 四维特征输入 + 0-100 结构化打分输出。"),
     ("你们的三层评测体系是怎么设计的？",
-     "① **AI as Judge**：第三方大模型从相关性、完整性、逻辑性三个维度 0-30 分批量打分，并用 t 检验做显著性验证（本项目 p=0.017 显著优于 SOTA）；② **AI as Customers**：生成 20 个不同投资水平的模拟用户身份提问并反馈评分，验证普适性；③ **人工交叉评测**：金融专业研究生按统一标准（单题满分 30，覆盖行业数据、产业链分析、风险提示、无幻觉四点）主观评测。另配合**消融实验**验证微调与工作流组件的各自贡献。"),
+     "① **AI as Judge**：第三方大模型从相关性、完整性、逻辑性三个维度 0-30 分批量打分，并用 t 检验做显著性验证（本项目 p=0.017 显著优于 SOTA）；② **AI as Customers**：生成 20 个不同投资水平的模拟用户身份提问并反馈评分，验证普适性；③ **人工交叉评测**：金融专业研究生按统一标准（单题满分 30，覆盖行业数据、产业链分析、风险提示、无幻觉四点）主观评测。另配合**消融实验**验证微调与工作流组件的各自贡献。", True),
     ("什么是思维链（Chain-of-Thought）？为什么对复杂推理有效？",
      "CoT 是在提示中引导模型「先一步一步推理、再给最终答案」的技巧（如「让我们逐步思考」）。\n\n**有效原因**：把隐式推理显式化，缓解长链路计算/多步逻辑容易出错的问题，并让每一步可被校验。本项目投顾推理即采用 System-2 深思熟虑模式——任务拆解、分维度分析、批评修正，本质上就是一套结构化的思维链。"),
     ("多智能体系统相比单个大模型有什么优势与代价？",
      "**优势**：① 分工专精（每个 Agent 只做一件事，质量更高）；② 可组合（加/减模块不影响整体）；③ 可审计（每步中间结果可见，便于纠错与溯源）；④ 并行提速。\n\n**代价**：① 多轮调用导致**延迟与 token 成本**上升；② 编排与调试更复杂；③ 角色间可能口径不一致，需要 Leader 汇总与批评修正兜底。本项目用 Leader 调度 + 批评修正 + 事实校验平衡这些代价。"),
     ("什么是 Transformer 与注意力机制？为什么适合处理金融文本？",
-     "Transformer 是现代大模型基础架构，核心是**自注意力（Self-Attention）**：让序列中任意两个词直接建立关联，不受距离限制。\n\n**适配金融文本**：研报/财报中关键实体（公司、指标、政策）常分散在长文各处，注意力能跨段落捕捉「茅台 → 营收 → 消费税」这类远距离依赖；且可并行训练、易于扩展。本项目的 BGE 嵌入与星火底座均基于 Transformer。"),
+     "Transformer 是现代大模型基础架构，核心是**自注意力（Self-Attention）**：让序列中任意两个词直接建立关联，不受距离限制。\n\n**适配金融文本**：研报/财报中关键实体（公司、指标、政策）常分散在长文各处，注意力能跨段落捕捉「茅台 → 营收 → 消费税」这类远距离依赖；且可并行训练、易于扩展。本项目的 BGE 嵌入与星火底座均基于 Transformer。", True),
 ]
 
+
+RESUME_NONTECH = (
+    "Fin Synagent 是一套面向个人投资者的 **AI 智能投顾系统**。它能像专业投资顾问一样，用自然语言回答投资咨询、推荐股票、解读研报，"
+    "并给出带有风险提示、可追溯来源的可解释分析，帮助普通投资者看懂行业全貌、做出更理性的决策。"
+)
+RESUME_TECH = (
+    "Fin Synagent：基于 **多智能体（Multi-Agent）** 协同的金融投顾系统。采用 System-2 深思熟虑推理，由 Leader 拆解任务；"
+    "经 **RAG**（Chroma 向量库 + BGE 中文嵌入 + 余弦相似度 Top-K 检索）注入白酒 / 红利 / 贵金属 / 宏观四大行业知识；"
+    "结合讯飞 **星火大模型 SFT 微调（LoRA）** 强化金融专业能力；按基本面 / 技术面 / 情绪面 / 行业面 **四维筛选树荐股**；"
+    "以 **AI as Judge + AI as Customers + 人工交叉** 三层评测验证（p=0.017 显著优于 SOTA），并通过 Streamlit 部署上线。"
+)
 
 def page_interview():
     st.markdown("""
     <div class="hero hero-mini">
       <div class="kicker">Interview Playbook · STAR & Tech Q&A</div>
       <h1 style="font-size:2rem;">🎤 项目面试建议</h1>
-      <div class="sub" style="margin-bottom:0;">AI 面试行为题（STAR 法则） · 技术高频问答 · 全部答案锚定 Fin Synagent 真实项目经历</div>
+      <div class="sub" style="margin-bottom:0;">简历项目介绍 · AI 面试行为题（STAR 法则） · 技术高频问答 · 全部答案锚定 Fin Synagent 真实项目经历</div>
     </div>
     """, unsafe_allow_html=True)
 
-    st.markdown('<div class="sec-title">第一部分 · AI 面试行为题</div><div class="sec-sub">STAR 法则：Situation 背景 → Task 任务 → Action 行动 → Result 结果</div>', unsafe_allow_html=True)
-    for i, (q, s, t, a, r) in enumerate(INTERVIEW_BEHAVIOR, 1):
-        with st.expander(f"**Q{i} · {q}**"):
-            st.markdown(f"""
-            <div class="step" style="border-left-color:#2B4C9B;"><b>S · 背景</b><br><span style="color:#55607a;font-size:.9rem;">{s}</span></div>
-            <div class="step" style="border-left-color:#4A6FD4;"><b>T · 任务</b><br><span style="color:#55607a;font-size:.9rem;">{t}</span></div>
-            <div class="step" style="border-left-color:#C9A227;"><b>A · 行动</b><br><span style="color:#55607a;font-size:.9rem;">{a}</span></div>
-            <div class="step" style="border-left-color:#1E9E6A;"><b>R · 结果</b><br><span style="color:#55607a;font-size:.9rem;">{r}</span></div>
-            """, unsafe_allow_html=True)
+    # 简历项目介绍（无技术版 / 有技术版）
+    with st.expander("📋 简历项目介绍（无技术版 / 有技术版 · 点击展开/收起）", expanded=True):
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown('<div class="sec-title" style="font-size:1rem;margin-top:2px;">📝 无技术版（简历 / 非技术评审）</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="resume-card">{RESUME_NONTECH}</div>', unsafe_allow_html=True)
+        with c2:
+            st.markdown('<div class="sec-title" style="font-size:1rem;margin-top:2px;">🛠 有技术版（技术简历 / 面试开场自我介绍）</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="resume-card">{RESUME_TECH}</div>', unsafe_allow_html=True)
 
-    st.markdown('<div class="sec-title">第二部分 · 技术高频问答</div><div class="sec-sub">围绕本项目核心技术点，按 RAG / 微调 / 通用大模型与工程归类，专项面试题已并入对应分组</div>', unsafe_allow_html=True)
+    # 第一部分 · AI 面试行为题
+    with st.expander("第一部分 · AI 面试行为题（STAR 法则 · 点击展开/收起）", expanded=True):
+        for i, row in enumerate(INTERVIEW_BEHAVIOR, 1):
+            q, s, t, a, r = row[:5]
+            star = bool(row[5]) if len(row) > 5 else False
+            with st.expander(f"**{'⭐ ' if star else ''}Q{i} · {q}**"):
+                st.markdown(f"""
+                <div class="step" style="border-left-color:#2B4C9B;"><b>S · 背景</b><br><span style="color:#55607a;font-size:.9rem;">{s}</span></div>
+                <div class="step" style="border-left-color:#4A6FD4;"><b>T · 任务</b><br><span style="color:#55607a;font-size:.9rem;">{t}</span></div>
+                <div class="step" style="border-left-color:#C9A227;"><b>A · 行动</b><br><span style="color:#55607a;font-size:.9rem;">{a}</span></div>
+                <div class="step" style="border-left-color:#1E9E6A;"><b>R · 结果</b><br><span style="color:#55607a;font-size:.9rem;">{r}</span></div>
+                """, unsafe_allow_html=True)
 
-    tech_groups = [
-        ("📚 RAG 与知识库", INTERVIEW_TECH_RAG),
-        ("🔧 微调与训练", INTERVIEW_TECH_FT),
-        ("🤖 通用大模型与工程", INTERVIEW_TECH_GEN),
-    ]
-    for g_title, g_items in tech_groups:
-        st.markdown(f'<div class="sec-title" style="font-size:1.08rem;margin-top:14px;">{g_title}</div>', unsafe_allow_html=True)
-        for q, a in g_items:
-            with st.expander(f"**{q}**"):
-                st.markdown(a)
+    # 第二部分 · 技术高频问答（按 RAG / 微调 / 通用归类，可整体与分组折叠）
+    with st.expander("第二部分 · 技术高频问答（RAG / 微调 / 通用 · 点击展开/收起）", expanded=True):
+        tech_groups = [
+            ("📚 RAG 与知识库", INTERVIEW_TECH_RAG),
+            ("🔧 微调与训练", INTERVIEW_TECH_FT),
+            ("🤖 通用大模型与工程", INTERVIEW_TECH_GEN),
+        ]
+        for g_title, g_items in tech_groups:
+            with st.expander(f"{g_title}（{len(g_items)} 题 · 点击展开/收起）", expanded=True):
+                for item in g_items:
+                    q, a = item[0], item[1]
+                    star = bool(item[2]) if len(item) > 2 else False
+                    with st.expander(f"**{'⭐ ' if star else ''}{q}**"):
+                        st.markdown(a)
 
 # ============================================================== 页面：RAG 知识库
 def _n(x):
@@ -1735,26 +1766,25 @@ def page_glossary():
 
     cats = gl.get("categories", [])
     total = sum(len(c.get("terms", [])) for c in cats)
+    n_star = sum(1 for c in cats for t in c.get("terms", []) if t.get("star"))
     st.markdown(
         f'<div class="pill">分组 {len(cats)} 类</div>'
-        f'<div class="pill">收录术语 {total} 条</div>',
+        f'<div class="pill">收录术语 {total} 条</div>'
+        f'<div class="pill" style="background:rgba(201,162,39,0.18);color:#9A6B00;border-color:rgba(201,162,39,0.5);">⭐ 核心术语 {n_star} 条</div>',
         unsafe_allow_html=True)
 
     for c in cats:
         icon = c.get("icon", "•")
         name = c.get("name", "未命名分组")
         terms = c.get("terms", [])
-        st.markdown(
-            f'<div class="sec-title">{icon} {name}</div>'
-            f'<div class="sec-sub">共 {len(terms)} 条</div>',
-            unsafe_allow_html=True)
-        rows = "".join(
-            f'<div class="gloss-card">'
-            f'<div class="gt">{t.get("term","")}</div>'
-            f'<div class="gd">{t.get("def","")}</div>'
-            f'</div>' for t in terms)
-        st.markdown(f'<div class="gloss-grid">{rows}</div>', unsafe_allow_html=True)
-    st.caption("术语定义面向演示与教学场景，实际投顾落地时请以监管口径与业务规范为准。")
+        with st.expander(f"{icon} {name}（共 {len(terms)} 条 · 点击展开/收起）", expanded=True):
+            rows = "".join(
+                f'<div class="gloss-card">'
+                f'<div class="gt{" gt-star" if t.get("star") else ""}">{"⭐ " if t.get("star") else ""}{t.get("term","")}</div>'
+                f'<div class="gd">{t.get("def","")}</div>'
+                f'</div>' for t in terms)
+            st.markdown(f'<div class="gloss-grid">{rows}</div>', unsafe_allow_html=True)
+    st.caption("⭐ 标注的为最基础、最重要的核心术语；术语定义面向演示与教学场景，实际投顾落地时请以监管口径与业务规范为准。")
 
 PAGES = {
     "首页": page_home,
