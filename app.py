@@ -1407,21 +1407,72 @@ def page_kb():
     st.dataframe(pd.DataFrame(coll_rows), use_container_width=True, hide_index=True)
     st.caption("对应项目「按行业分账号管理知识库」设计：四个 collection 即四个独立知识域，Consult 检索时按用户问题所属行业路由。")
 
-    # 二、真实检索样本
-    st.markdown('<div class="sec-title">真实检索样本（Chroma 向量库 Top-3）</div><div class="sec-sub">以下片段由 bge 向量 + 余弦相似度从真实建库结果中召回，相似度与来源均为真实值，非人工编造</div>', unsafe_allow_html=True)
-    for ind in ["白酒", "红利", "贵金属", "宏观"]:
-        qmap = retrieval.get(ind, {})
-        if not qmap:
-            continue
-        q0 = next(iter(qmap))
-        hits = qmap[q0]
-        with st.expander(f"🔍 {ind} · 检索词：「{q0}」"):
-            for h in hits:
-                st.markdown(
-                    f'<div class="src">📄 <b>{h["source"]}</b> · p{h["page"]} · 相似度 <b>{h["score"]:.3f}</b><br>'
-                    f'<span style="color:#4A6A56;">{h["text"]}</span></div>', unsafe_allow_html=True)
+    # 二、RAG 检索样本浏览器（可导航，覆盖全部 60 个查询 × Top-5）
+    retrieval_eval = KB.get("retrieval_eval", {})
+    eval_overall = retrieval_eval.get("overall", {})
+    n_samples = sum(len(h) for qq in retrieval.values() for h in qq.values())
+    st.markdown(f'<div class="sec-title">RAG 检索样本浏览器</div><div class="sec-sub">共 {n_samples} 条真实召回片段（4 行业 × 15 个代表性查询 × Top-5），均由 bge 向量 + 余弦相似度从真实建库结果召回，相似度与来源均为真实值，非人工编造</div>', unsafe_allow_html=True)
+    ind_opt = ["白酒", "红利", "贵金属", "宏观"]
+    colA, colB = st.columns([1, 3])
+    with colA:
+        sel_ind = st.selectbox("选择行业知识域", ind_opt, key="kb_ind")
+    qmap = retrieval.get(sel_ind, {})
+    q_opts = list(qmap.keys())
+    with colB:
+        sel_q = st.selectbox("选择检索查询", q_opts, key="kb_q")
+    hits = qmap.get(sel_q, [])
+    st.markdown(
+        f'<div class="pill">检索域：{coll_name.get(sel_ind, sel_ind)}</div>'
+        f'<div class="pill">返回 Top-{eval_overall.get("top_k", 5)}</div>'
+        f'<div class="pill">命中 {len(hits)} 条真实片段</div>',
+        unsafe_allow_html=True)
+    for h in hits:
+        st.markdown(
+            f'<div class="src">📄 <b>{h["source"]}</b> · p{h["page"]} · 相似度 <b>{h["score"]:.3f}</b> · 排名 #{h["rank"]}<br>'
+            f'<span style="color:#4A6A56;">{h["text"]}</span></div>', unsafe_allow_html=True)
 
-    # 三、RAG 全流程详解（每步含真实示例）
+    # 三、RAG 检索评价指标
+    st.markdown('<div class="sec-title">RAG 检索评价指标</div><div class="sec-sub">基于本地 bge 嵌入对全量集合做真实余弦相似度排序，相关性以『来源溯源』判定（实体级 qrels + 行业纯度），在无人工标注下验证多集合 RAG 的路由正确性与片段相关性</div>', unsafe_allow_html=True)
+    kpis = [
+        (f'{eval_overall.get("recall@5", 0):.1%}', "Recall@5（实体级）"),
+        (f'{eval_overall.get("mrr", 0):.3f}', "MRR 平均倒数排名"),
+        (f'{eval_overall.get("ndcg@5", 0):.3f}', "NDCG@5"),
+        (f'{eval_overall.get("purity@5", 0):.1%}', "行业纯度@5"),
+        (f'{eval_overall.get("source_coverage_top5", 0):.2f}', "Top-5 来源覆盖数"),
+        (f'{_n(n_samples)}', "检索样本总数"),
+    ]
+    for col, (v, k) in zip(st.columns(6), kpis):
+        with col:
+            st.markdown(f'<div class="kpi"><div class="v">{v}</div><div class="k">{k}</div></div>', unsafe_allow_html=True)
+
+    st.markdown('<div class="sec-title" style="font-size:1.1rem;margin-top:26px;">相似度置信度分布（Top-5 命中相似度）</div><div class="sec-sub">横轴为余弦相似度分箱，纵轴为命中数——分布越靠右、峰值越高，代表检索返回段落与查询语义越贴近</div>', unsafe_allow_html=True)
+    hist = eval_overall.get("histogram", [])
+    if hist:
+        hdf = pd.DataFrame(hist, columns=["相似度区间", "命中数"])
+        st.bar_chart(hdf.set_index("相似度区间"))
+        sd = eval_overall.get("sim_dist", {}).get("top5", {})
+        if sd:
+            st.caption(f"Top-5 相似度：均值 {sd.get('mean')} · 中位 {sd.get('median')} · P10 {sd.get('p10')} · P90 {sd.get('p90')}（数值越高代表召回段落与查询语义越贴近）")
+
+    st.markdown('<div class="sec-title" style="font-size:1.1rem;margin-top:26px;">分行业指标</div>', unsafe_allow_html=True)
+    by_ind = retrieval_eval.get("by_industry", {})
+    rows = []
+    for ind in ind_opt:
+        m = by_ind.get(ind, {})
+        rows.append({
+            "行业": ind,
+            "查询数": m.get("n_queries"),
+            "Recall@5": f'{m.get("recall@5", 0):.1%}',
+            "MRR": f'{m.get("mrr", 0):.3f}',
+            "NDCG@5": f'{m.get("ndcg@5", 0):.3f}',
+            "纯度@5": f'{m.get("purity@5", 0):.1%}',
+            "来源覆盖": m.get("source_coverage_top5"),
+            "Top5均相似度": m.get("sim_mean_top5"),
+        })
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    st.caption("方法学：相关性以查询目标主体（公司/机构）锚定相关 chunk（未命中实体时回退『与 Top-1 同小节 heading』）；行业纯度以行业已知来源前缀判定；NDCG 采用二值相关性。该评测在无人工标注下验证多集合 RAG 的路由正确性与片段相关性，数值随查询集与定义变化，仅作系统能力佐证。")
+
+    # 四、RAG 全流程详解（每步含真实示例）
     st.markdown('<div class="sec-title">RAG 全流程详解</div><div class="sec-sub">检索增强生成：离线建库 + 在线查询两端，全部基于本项目真实代码与数据</div>', unsafe_allow_html=True)
     ro, rq = st.columns(2)
     with ro:
