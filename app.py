@@ -1304,22 +1304,28 @@ INTERVIEW_BEHAVIOR = [
      "独立完成三大行业知识库与分析模块，系统回答质量通过金融专业研究生人工评测认可。"),
 ]
 
-INTERVIEW_TECH = [
-    ("什么是 Agent？Agent 和 LLM 有什么区别？",
-     "Agent 是能够感知信息、做出决策并执行行动以完成目标的智能系统。\n\n**LLM = 只负责回答/生成**；**Agent = 能思考 + 能规划 + 能行动**。Agent 以 LLM 为大脑，叠加任务规划、工具调用（搜索、数据库、API）与记忆能力，可以自主完成多步骤复杂任务。"),
+INTERVIEW_TECH_RAG = [
     ("什么是 RAG？完整流程是什么？有什么作用？⭐面试高频",
      "RAG（Retrieval-Augmented Generation，检索增强生成）是在生成前先检索外部知识、把检索结果拼入提示词再生成答案的技术。\n\n**完整流程（7 步）**：① 文档切分（本项目用语义段落切分 Semantic Chunking，同一主题划为一个 Chunk）→ ② 向量化（星火 Embedding 模型编码）→ ③ 存入向量数据库（Chroma）→ ④ 查询向量化 → ⑤ 相似度检索（余弦相似度 Top-K）→ ⑥ Prompt 拼接（系统指令约束：严格依据资料、标注来源）→ ⑦ 生成答案。\n\n**作用**：① 解决模型知识不新的问题；② 解决知识不全的问题、避免幻觉；③ 让模型能访问私域 / 内部数据。"),
     ("什么是模型幻觉？产生原因是什么？如何抑制？",
      "幻觉是大模型生成看似合理但与事实不符内容的现象。\n\n**典型表现**：① 编造事实（把不存在的论文、新闻、数据说成真的）；② 张冠李戴（把 A 的结论安到 B 头上）；③ 虚构引用。\n\n**原因**：语言流畅性优先于真实性；缺少实时知识核对机制。\n\n**本项目对策**：RAG 知识库约束回答依据 + Search Agent 联网检索 + Verify Agent 事实校验，输出与网络数据、知识库数据双重比对。"),
+]
+
+INTERVIEW_TECH_FT = [
     ("什么是微调？什么是 LoRA 微调？",
      "**微调（Fine-tune）**：通用大模型见过海量数据但不懂你的专属任务与风格，微调就是用领域数据继续训练，让模型掌握专属能力。本项目用证券/基金从业题库 + FinCUGE 数据集 + 行业研报问答对，在星火平台对 Spark 模型做 SFT 微调。\n\n**LoRA**：不改动原模型任何权重，在 Transformer 注意力模块旁额外插入两个极小的低秩矩阵 A、B，只训练这两个矩阵。\n\n**LoRA 优势**：① 显存门槛低；② 训练速度快；③ 权重可随时开关切换。\n\n**步骤**：准备专属数据集 → 冻结原始权重、仅开启 LoRA 矩阵训练 → 少量轮次训练收敛（本项目 lr=8e-5，5 epochs）→ 保存并绑定 LoRA 权重发布。"),
+]
+
+INTERVIEW_TECH_GEN = [
+    ("什么是 Agent？Agent 和 LLM 有什么区别？",
+     "Agent 是能够感知信息、做出决策并执行行动以完成目标的智能系统。\n\n**LLM = 只负责回答/生成**；**Agent = 能思考 + 能规划 + 能行动**。Agent 以 LLM 为大脑，叠加任务规划、工具调用（搜索、数据库、API）与记忆能力，可以自主完成多步骤复杂任务。"),
     ("什么是 Prompt Engineering？高质量 Prompt 的基本结构？",
      "Prompt Engineering 本质是用自然语言精确描述需求，引导模型输出高质量结果。\n\n**高质量 Prompt 四要素**：① 角色（Role：你是资深金融分析师）；② 任务（Task：明确要做什么）；③ 上下文 / 约束（依据给定资料、不得编造、标注来源）；④ 输出格式（分点、表格、JSON 等）。\n\n本项目 Screen 的评分 Prompt 即采用『资深股票分析师』角色 + 四维特征输入 + 0-100 结构化打分输出。"),
     ("你们的三层评测体系是怎么设计的？",
      "① **AI as Judge**：第三方大模型从相关性、完整性、逻辑性三个维度 0-30 分批量打分，并用 t 检验做显著性验证（本项目 p=0.017 显著优于 SOTA）；② **AI as Customers**：生成 20 个不同投资水平的模拟用户身份提问并反馈评分，验证普适性；③ **人工交叉评测**：金融专业研究生按统一标准（单题满分 30，覆盖行业数据、产业链分析、风险提示、无幻觉四点）主观评测。另配合**消融实验**验证微调与工作流组件的各自贡献。"),
 ]
 
-INTERVIEW_RAG_FT = [
+INTERVIEW_RAG = [
     ("RAG 中常见的文档切分（Chunking）策略有哪些？各有什么优缺点？",
      "① **固定长度切分**（按字符/token 滑动窗口）：实现简单、长度可控，但容易切断语义（一句话被拆两半）；② **按句子/段落切分**：保留自然边界，但长短不均；③ **语义切分**（本项目采用）：按标题层级 + 同主题聚合，把同一小节作为一整个 chunk（≤520 字），语义完整、检索命中更准，缺点是对无标题文档要回退按页切分。\n\n**本项目权衡**：语义切分 + 中文占比≥45% 过滤双语年报的英文页眉噪声，最终 4736 → 3329 个高质量 chunk，召回质量明显提升。"),
     ("为什么选 bge 这类稠密向量模型做 Embedding？和 BM25 稀疏检索怎么选？",
@@ -1330,6 +1336,9 @@ INTERVIEW_RAG_FT = [
      "**RAG 解决「知识」问题**——让模型访问最新/私域/外部知识、抑制幻觉、答案可溯源，适合知识频繁更新、需引用出处的场景（如投顾研报问答）。**微调解决「能力/风格」问题**——让模型学会特定任务格式、专业口吻、领域推理，适合固定任务、低延迟、风格一致。\n\n**经验法则：先 RAG 后微调**；知识类优先 RAG，能力类才上微调。本项目两者结合：RAG 注入行业知识 + 星火 SFT 微调强化「投资」语义捕捉与金融专业性。"),
     ("如何评估一个 RAG 系统的效果？有哪些关键指标？",
      "分两层：① **检索质量**：召回率 Recall@K、命中率 Hit Rate、NDCG；② **生成质量**：忠实度 Faithfulness（是否严格来自检索内容、有无编造）、答案相关性 Answer Relevancy、上下文利用率。\n\n本项目配套三层评测：AI as Judge 打分 + AI as Customers 模拟用户 + 人工交叉评测，并用 t 检验验证显著性（p=0.017）。工程上建议用 **RAGAS** 等框架自动化这些指标。"),
+]
+
+INTERVIEW_FT = [
     ("全量微调和 LoRA / QLoRA 有什么区别？QLoRA 是怎么把显存压下来的？",
      "**全量微调**更新全部权重，效果上限高但显存/算力昂贵、易灾难性遗忘；**LoRA** 冻结原权重，在注意力线性层旁路插入低秩矩阵 A(降维)→B(升维)，只训这俩小矩阵，参数量可降至 <1%，可多任务热插拔。**QLoRA** 叠加：4-bit NF4 量化基座 + 分页优化器 + 双重量化，把 65B 级模型微调压到单张消费级显卡。\n\n本项目星火平台微调采用 LoRA（lr=8e-5，5 epochs），不改动基座权重。"),
     ("微调时如何防止「灾难性遗忘」（Catastrophic Forgetting）？",
@@ -1358,13 +1367,26 @@ def page_interview():
             <div class="step" style="border-left-color:#1E9E6A;"><b>R · 结果</b><br><span style="color:#55607a;font-size:.9rem;">{r}</span></div>
             """, unsafe_allow_html=True)
 
-    st.markdown('<div class="sec-title">第二部分 · 技术高频问答</div><div class="sec-sub">围绕本项目核心技术点：Multi-Agent · RAG · 微调 / LoRA · 幻觉抑制 · 评测体系</div>', unsafe_allow_html=True)
-    for q, a in INTERVIEW_TECH:
+    st.markdown('<div class="sec-title">第二部分 · 技术高频问答</div><div class="sec-sub">围绕本项目核心技术点，按 RAG / 微调 / 通用大模型与工程归类</div>', unsafe_allow_html=True)
+
+    tech_groups = [
+        ("📚 RAG 与知识库", INTERVIEW_TECH_RAG),
+        ("🔧 微调与训练", INTERVIEW_TECH_FT),
+        ("🤖 通用大模型与工程", INTERVIEW_TECH_GEN),
+    ]
+    for g_title, g_items in tech_groups:
+        st.markdown(f'<div class="sec-title" style="font-size:1.08rem;margin-top:14px;">{g_title}</div>', unsafe_allow_html=True)
+        for q, a in g_items:
+            with st.expander(f"**{q}**"):
+                st.markdown(a)
+
+    st.markdown('<div class="sec-title">第三部分 · RAG 专项面试题</div><div class="sec-sub">聚焦检索增强生成：切分策略 · Embedding · 检索召回 · RAG vs 微调 · 效果评估，全部答案锚定本项目真实实现</div>', unsafe_allow_html=True)
+    for q, a in INTERVIEW_RAG:
         with st.expander(f"**{q}**"):
             st.markdown(a)
 
-    st.markdown('<div class="sec-title">第三部分 · RAG 与微调专项面试题</div><div class="sec-sub">聚焦检索增强生成与模型微调两大核心技术，全部答案锚定本项目真实实现</div>', unsafe_allow_html=True)
-    for q, a in INTERVIEW_RAG_FT:
+    st.markdown('<div class="sec-title">第四部分 · 微调专项面试题</div><div class="sec-sub">聚焦模型微调：全量/LoRA/QLoRA · 灾难性遗忘 · SFT 数据集，全部答案锚定本项目真实实现</div>', unsafe_allow_html=True)
+    for q, a in INTERVIEW_FT:
         with st.expander(f"**{q}**"):
             st.markdown(a)
 
