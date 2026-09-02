@@ -15,6 +15,8 @@ from streamlit_option_menu import option_menu
 
 # ============================================================== 真实知识库数据（离线 bundle）
 KB_DATA_PATH = os.path.join(os.path.dirname(__file__), "kb_data.json")
+# 技能内置的可运行 Python 脚本目录（随 Demo 一同部署，页面直接读取真实文件内容）
+SCRIPTS_DIR = os.path.join(os.path.dirname(__file__), "scripts")
 @st.cache_data
 def load_kb_data():
     """加载由 knowledge_base/Chroma 真实检索 + 微调数据集统计生成的 bundle。"""
@@ -1573,64 +1575,39 @@ def page_skills():
           </p>
         </div>""", unsafe_allow_html=True)
 
-    st.markdown('<div class="sec-title" style="font-size:1.05rem;margin-top:18px;">🐍 打包的 Python 脚本（可直接运行）</div>', unsafe_allow_html=True)
-    cc1, cc2 = st.columns(2)
-    with cc1:
-        with st.expander("🔧 Fin Synagent · scripts/kb_build/embed_store.py · bge 向量化入库"):
-            st.code('''model = SentenceTransformer("BAAI/bge-small-zh-v1.5")  # 中文 embedding, 512 维
-client = chromadb.PersistentClient(path=CHROMA_DIR)
-coll = client.create_collection(
-    name="baijiu", metadata={"industry": "白酒", "hnsw:space": "cosine"})
-embeddings = model.encode(texts, batch_size=64,
-                          normalize_embeddings=True, convert_to_numpy=True)
-coll.add(ids=ids, embeddings=embeddings.tolist(),
-         documents=docs, metadatas=metas)   # 按行业分 4 个 collection''', language="python")
-        with st.expander("✂️ Fin Synagent · scripts/kb_build/semantic_chunk.py · 语义切分"):
-            st.code('''def chinese_ratio(text):
-    cn = len(re.findall(r"[\\u4e00-\\u9fff]", text))   # 中文字符数
-    return cn / max(1, len(re.sub(r"\\s", "", text)))
+    st.markdown('<div class="sec-title" style="font-size:1.05rem;margin-top:18px;">🐍 打包的 Python 脚本（完整源码 · 支持下载）</div>', unsafe_allow_html=True)
+    st.caption("以下 8 个脚本为技能内置的真实可运行代码，已随 Demo 一同部署；展开即可查看完整源码并一键下载。")
 
-# 同主题聚合为一个 chunk，单块上限 520 字
-if len("".join(cur["sents"])) > MAX_CHARS:   # MAX_CHARS = 520
-    flush()
-# 中文占比 < 45% 的长块直接丢弃（过滤双语年报英文页眉）
-if len(text) >= MIN_CHARS and chinese_ratio(text) >= 0.45:
-    chunks.append({"industry": ind, "source": source, "text": text})''', language="python")
-    with cc2:
-        with st.expander("📄 Fin Synagent · scripts/kb_build/extract_markdown.py · 标题识别"):
-            st.code('''doc = fitz.open(path)                       # PyMuPDF
-sizes = [sp["size"] for ... in doc]          # 第一遍统计字号
-body_med = sizes[len(sizes)//2]              # 正文字号中位数
+    PACKAGED_SCRIPTS = [
+        ("🔧", "kb_build/embed_store.py", "bge 向量化 + Chroma 分行业入库"),
+        ("✂️", "kb_build/semantic_chunk.py", "语义切分 + 中文占比过滤双语噪声"),
+        ("📄", "kb_build/extract_markdown.py", "PyMuPDF 标题层级识别 → 结构化 Markdown"),
+        ("🔍", "kb_build/verify_retrieval.py", "各行业真实查询 Top-K 召回验证"),
+        ("📥", "kb_build/download_annual_reports.py", "巨潮 API 批量下载龙头年报"),
+        ("📥", "kb_build/download_supplement.py", "季报 / ESG / 分红公告补充下载"),
+        ("📥", "kb_build/download_pbc_survey.py", "央行问卷调查报告 PDF 下载"),
+        ("📑", "extract_office_content.py", "PPTX / DOCX 通用提取（Deployer）"),
+    ]
+    for _icon, _rel, _desc in PACKAGED_SCRIPTS:
+        _fpath = os.path.join(SCRIPTS_DIR, _rel.replace("/", os.sep))
+        with st.expander(f"{_icon} scripts/{_rel} · {_desc}"):
+            if os.path.exists(_fpath):
+                with open(_fpath, encoding="utf-8") as _fh:
+                    _code = _fh.read()
+                _kb = len(_code.encode("utf-8")) / 1024
+                st.caption(f"{len(_code.splitlines())} 行 · {_kb:.1f} KB · 完整源码，直接读取自已部署的 .py 文件")
+                st.code(_code, language="python")
+                st.download_button(
+                    label=f"⬇️ 下载 {_rel.split('/')[-1]}",
+                    data=_code,
+                    file_name=_rel.split("/")[-1],
+                    mime="text/x-python",
+                    key=f"dl_{_rel.replace('/', '_')}",
+                )
+            else:
+                st.warning("该脚本未随部署包提供。")
 
-def is_heading_line(text, size, body_med):
-    if size >= body_med * 1.22 and len(text) <= 20:   # 字号明显大于正文且短
-        return True
-    return False''', language="python")
-        with st.expander("📑 Deployer · scripts/extract_office_content.py · 办公文档提取"):
-            st.code('''def shape_text(shape, depth=0):
-    out = []
-    if shape.shape_type == 6:            # group 组合图形
-        for s in shape.shapes:
-            out.extend(shape_text(s, depth + 1))
-        return out
-    if shape.has_text_frame:             # 文本框
-        for para in shape.text_frame.paragraphs:
-            t = "".join(r.text for r in para.runs).strip()
-            if t:
-                out.append({"text": t, "level": para.level})
-    if getattr(shape, "has_table", False):   # 表格
-        out.append({"table": [[c.text for c in r.cells]
-                               for r in shape.table.rows]})
-    return out
-
-def extract_pptx(path):
-    from pptx import Presentation
-    prs = Presentation(path)
-    slides = [{"index": i, "items": [...], "notes": ...}
-              for i, slide in enumerate(prs.slides)]
-    return {"type": "pptx", "slides": slides}''', language="python")
-
-    st.info("📚 RAG 全流程与微调训练全流程的<b>详细步骤与每步真实示例</b>，已整合进「知识库与微调」页（点左侧导航查看）；上方展示的 <b>工程脚本源码</b>（embed_store / semantic_chunk / extract_markdown / extract_office_content）即 Fin Synagent 与 Deployer 技能内置的可运行 Python 代码，展开代码块即可查看。")
+    st.info("📚 RAG 全流程与微调训练全流程的<b>详细步骤与每步真实示例</b>，已整合进「知识库与微调」页（点左侧导航查看）；上方 <b>8 个工程脚本</b>均实时读取随 Demo 部署的真实 <code>.py</code> 文件，展开可看完整源码并一键下载，与 Fin Synagent / Deployer 技能内置版本完全一致。")
 
     st.info("💡 在 WorkBuddy 中可通过对话直接调用：提到「生成 streamlit demo / 部署」会触发 Deployer；以「Fin Synagent 投顾」身份提问或要求行业分析、荐股，会触发 Fin Synagent 能力版。")
 
