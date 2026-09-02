@@ -18,14 +18,15 @@ KB_DATA_PATH = os.path.join(os.path.dirname(__file__), "kb_data.json")
 # 技能内置的可运行 Python 脚本目录（随 Demo 一同部署，页面直接读取真实文件内容）
 SCRIPTS_DIR = os.path.join(os.path.dirname(__file__), "scripts")
 @st.cache_data
-def load_kb_data():
+def load_kb_data(version="v1"):
     """加载由 knowledge_base/Chroma 真实检索 + 微调数据集统计生成的 bundle。"""
+    _ = version  # 用于数据格式更新时强制刷新 cache
     try:
         with open(KB_DATA_PATH, encoding="utf-8") as f:
             return json.load(f)
     except Exception:
         return None
-KB = load_kb_data()
+KB = load_kb_data(version="v2")
 
 st.set_page_config(
     page_title="Fin Synagent · 多智能体协同智能投顾",
@@ -1418,6 +1419,10 @@ def page_kb():
         sel_ind = st.selectbox("选择行业知识域", ind_opt, key="kb_ind")
     qmap = retrieval.get(sel_ind, {})
     q_opts = list(qmap.keys())
+    # 切换行业时，重置查询选择框到该行业首个查询，避免旧值在新行业不存在导致空结果
+    if st.session_state.get("kb_ind_prev") != sel_ind:
+        st.session_state["kb_q"] = q_opts[0] if q_opts else None
+        st.session_state["kb_ind_prev"] = sel_ind
     with colB:
         sel_q = st.selectbox("选择检索查询", q_opts, key="kb_q")
     hits = qmap.get(sel_q, [])
@@ -1427,9 +1432,14 @@ def page_kb():
         f'<div class="pill">命中 {len(hits)} 条真实片段</div>',
         unsafe_allow_html=True)
     for h in hits:
+        source = h.get("source", "未知来源")
+        page = h.get("page", "-")
+        score = float(h.get("score", 0) or 0)
+        rank = h.get("rank", "-")
+        text = h.get("text", "")
         st.markdown(
-            f'<div class="src">📄 <b>{h["source"]}</b> · p{h["page"]} · 相似度 <b>{h["score"]:.3f}</b> · 排名 #{h["rank"]}<br>'
-            f'<span style="color:#4A6A56;">{h["text"]}</span></div>', unsafe_allow_html=True)
+            f'<div class="src">📄 <b>{source}</b> · p{page} · 相似度 <b>{score:.3f}</b> · 排名 #{rank}<br>'
+            f'<span style="color:#4A6A56;">{text}</span></div>', unsafe_allow_html=True)
 
     # 三、RAG 检索评价指标
     st.markdown('<div class="sec-title">RAG 检索评价指标</div><div class="sec-sub">基于本地 bge 嵌入对全量集合做真实余弦相似度排序，相关性以『来源溯源』判定（实体级 qrels + 行业纯度），在无人工标注下验证多集合 RAG 的路由正确性与片段相关性</div>', unsafe_allow_html=True)
