@@ -1777,7 +1777,9 @@ def page_glossary():
         icon = c.get("icon", "•")
         name = c.get("name", "未命名分组")
         terms = c.get("terms", [])
-        with st.expander(f"{icon} {name}（共 {len(terms)} 条 · 点击展开/收起）", expanded=True):
+        n_star_cat = sum(1 for t in terms if t.get("star"))
+        star_label = f" · 核心 {n_star_cat} 条" if n_star_cat else ""
+        with st.expander(f"{icon} {name}（共 {len(terms)} 条{star_label} · 点击展开/收起）", expanded=True):
             rows = "".join(
                 f'<div class="gloss-card">'
                 f'<div class="gt{" gt-star" if t.get("star") else ""}">{"⭐ " if t.get("star") else ""}{t.get("term","")}</div>'
