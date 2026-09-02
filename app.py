@@ -1366,14 +1366,14 @@ INTERVIEW_TECH_GEN = [
 
 
 RESUME_NONTECH = (
-    "Fin Synagent 是一套面向个人投资者的 **AI 智能投顾系统**。它能像专业投资顾问一样，用自然语言回答投资咨询、推荐股票、解读研报，"
+    "Fin Synagent 是一套面向个人投资者的 <b>AI 智能投顾系统</b>。它能像专业投资顾问一样，用自然语言回答投资咨询、推荐股票、解读研报，"
     "并给出带有风险提示、可追溯来源的可解释分析，帮助普通投资者看懂行业全貌、做出更理性的决策。"
 )
 RESUME_TECH = (
-    "Fin Synagent：基于 **多智能体（Multi-Agent）** 协同的金融投顾系统。采用 System-2 深思熟虑推理，由 Leader 拆解任务；"
-    "经 **RAG**（Chroma 向量库 + BGE 中文嵌入 + 余弦相似度 Top-K 检索）注入白酒 / 红利 / 贵金属 / 宏观四大行业知识；"
-    "结合讯飞 **星火大模型 SFT 微调（LoRA）** 强化金融专业能力；按基本面 / 技术面 / 情绪面 / 行业面 **四维筛选树荐股**；"
-    "以 **AI as Judge + AI as Customers + 人工交叉** 三层评测验证（p=0.017 显著优于 SOTA），并通过 Streamlit 部署上线。"
+    "Fin Synagent：基于 <b>多智能体（Multi-Agent）</b> 协同的金融投顾系统。采用 System-2 深思熟虑推理，由 Leader 拆解任务；"
+    "经 <b>RAG</b>（Chroma 向量库 + BGE 中文嵌入 + 余弦相似度 Top-K 检索）注入白酒 / 红利 / 贵金属 / 宏观四大行业知识；"
+    "结合讯飞 <b>星火大模型 SFT 微调（LoRA）</b> 强化金融专业能力；按基本面 / 技术面 / 情绪面 / 行业面 <b>四维筛选树荐股</b>；"
+    "以 <b>AI as Judge + AI as Customers + 人工交叉</b> 三层评测验证（p=0.017 显著优于 SOTA），并通过 Streamlit 部署上线。"
 )
 
 def page_interview():
