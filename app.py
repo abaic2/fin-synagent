@@ -732,54 +732,32 @@ def page_home():
     </div>
     """, unsafe_allow_html=True)
 
-    st.markdown('<div class="sec-title">核心功能</div><div class="sec-sub">Consult 智能咨询 · Screen 智能荐股 · 透明化工作流 · 星火大模型驱动</div>', unsafe_allow_html=True)
-    cards = [
-        ("💬", "Consult 智能咨询", "领导智能体拆解任务、专家智能体专业回答、评论家与求证智能体双重监督，全程可观测、可干预、可追问。"),
-        ("📊", "Screen 智能荐股", "基于技术分析与财务分析的筛选树荐股思维，以分析师视角推荐行业个股并给出理由与可视化走势。"),
-        ("🏭", "行业深度分析", "覆盖白酒、红利、贵金属三大行业知识库，检索高质量研报融入提示词，信息全部可溯源。"),
-        ("🔥", "星火大模型模拟", "内置 Spark4.0 Ultra / Max / Pro / Lite 模拟引擎，参数可调、流式生成，还原真实调用体验。"),
-    ]
-    for col, (icon, title, desc) in zip(st.columns(4), cards):
-        with col:
-            st.markdown(f'<div class="card"><div class="icon">{icon}</div><h4>{title}</h4><p>{desc}</p></div>', unsafe_allow_html=True)
-
-    st.markdown('<div class="sec-title">设计理念</div><div class="sec-sub">概要设计三原则</div>', unsafe_allow_html=True)
-    prins = [
-        ("🧠", "01 · 深思熟虑", "模拟人脑 System-2 系统运作，明确 LLM 意识边界，以任务拆解工作流实现降本提效。"),
-        ("📐", "02 · 实事求是", "采用可视化平台部署，构建多智能体工作流与金融行业知识库，基于事实与数据进行分析。"),
-        ("🔎", "03 · 小心求证", "增设知识库与联网求证监控幻觉，叠加用户反馈与追问机制，实现全链路监督。"),
-    ]
-    for col, (icon, title, desc) in zip(st.columns(3), prins):
-        with col:
-            st.markdown(f'<div class="card"><div class="icon">{icon}</div><h4>{title}</h4><p>{desc}</p></div>', unsafe_allow_html=True)
-
-    st.markdown('<div class="sec-title">操作流程</div><div class="sec-sub">四步获得专业投顾服务</div>', unsafe_allow_html=True)
-    c1, c2 = st.columns(2)
+    st.markdown('<div class="sec-title">选择你的路径</div><div class="sec-sub">无论你是投资者、技术评审还是正在准备面试，都能快速找到入口</div>', unsafe_allow_html=True)
+    c1, c2, c3 = st.columns(3)
     with c1:
-        st.markdown("""
-        <div class="step"><b>STEP 1 · 输入咨询</b><br><span style="color:#6B7699;font-size:.88rem">在 Consult 页输入您的投资问题，或使用侧边栏引导词快速开始。</span></div>
-        <div class="step"><b>STEP 2 · 任务拆解</b><br><span style="color:#6B7699;font-size:.88rem">领导智能体将问题拆解为子任务并分配专家，您可以补充或调整拆解结果（人机协同）。</span></div>
-        """, unsafe_allow_html=True)
+        st.markdown('<div class="card"><div class="icon">💡</div><h4>我想体验产品</h4><p>用自然语言咨询投资、查看行业分析与个股推荐。</p></div>', unsafe_allow_html=True)
+        if st.button("进入产品体验 →", key="go_product", use_container_width=True, type="primary"):
+            _select_nav("智能咨询"); st.rerun()
     with c2:
-        st.markdown("""
-        <div class="step"><b>STEP 3 · 求证监督</b><br><span style="color:#6B7699;font-size:.88rem">评论家批评改进、搜索与求证智能体联网核验，信息源全部可溯源。</span></div>
-        <div class="step"><b>STEP 4 · 总结与追问</b><br><span style="color:#6B7699;font-size:.88rem">总结领导输出最终建议；您可针对结论追问，或前往 Screen 获取个股推荐。</span></div>
-        """, unsafe_allow_html=True)
+        st.markdown('<div class="card"><div class="icon">🧩</div><h4>我想看技术</h4><p>星火大模型、RAG、微调、评测与知识库全揭秘。</p></div>', unsafe_allow_html=True)
+        if st.button("查看技术底座 →", key="go_tech", use_container_width=True, type="primary"):
+            _select_nav("技术底座"); st.rerun()
+    with c3:
+        st.markdown('<div class="card"><div class="icon">🎤</div><h4>我在准备面试</h4><p>简历项目介绍、STAR 行为题与技术高频问答。</p></div>', unsafe_allow_html=True)
+        if st.button("打开面试建议 →", key="go_interview", use_container_width=True, type="primary"):
+            _select_nav("面试建议"); st.rerun()
 
-    st.markdown('<div class="sec-title">评估结果一览</div><div class="sec-sub">AI as Judge · AI as Customers · 人工评估三重验证</div>', unsafe_allow_html=True)
-    kpis = [("28.41", "AI 评估均分（满分30）"), ("+8.21%", "显著优于 SOTA 模型"), ("p=0.017", "t 检验显著性"), ("3329", "RAG 向量片段（35 PDF）")]
+    st.markdown('<div class="sec-title">核心数据一览</div><div class="sec-sub">AI as Judge · AI as Customers · 人工评估三重验证</div>', unsafe_allow_html=True)
+    kpis = [("28.41", "AI 评估均分（满分30）"), ("p=0.017", "显著优于 SOTA"), ("3329", "RAG 向量片段"), ("4", "行业知识域")]
     for col, (v, k) in zip(st.columns(4), kpis):
         with col:
             st.markdown(f'<div class="kpi"><div class="v">{v}</div><div class="k">{k}</div></div>', unsafe_allow_html=True)
 
-    st.markdown('<div class="sec-title">版本迭代回顾</div><div class="sec-sub">基于问题持续进化 · Fin 1.0 → Fin 3.0</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec-title">版本迭代</div><div class="sec-sub">Fin 1.0 → Fin 3.0 持续进化</div>', unsafe_allow_html=True)
     st.markdown("""
     <div class="tl">
-      <div class="tl-item"><b>Fin 1.0</b><p>领导选择专家、批评家批评、专家补充的基础流程；发现注意力分散、批评笼统、微调专家能力不足等问题。</p></div>
-      <div class="tl-item"><b>Fin 1.5</b><p>采用 Spark4.0 Ultra 作为专家模型，分析处理能力大幅增强，内生联网搜索参考最新消息。</p></div>
-      <div class="tl-item"><b>Fin 2.0</b><p>引入任务分解提升注意力；批评家内化为专家自反思；增加知识库 Verify 环节与历史信息抽取。</p></div>
-      <div class="tl-item"><b>Fin 2.5</b><p>增加任务分解程度选项（人机协同）；显示联网检索信源；反思环节模型自提示驱动。</p></div>
-      <div class="tl-item"><b>Fin 3.0</b><p>增设 Screen 荐股板块，Streamlit 界面由单页进化为多页应用。</p></div>
+      <div class="tl-item"><b>Fin 1.0 – 2.5</b><p>任务拆解、Critic 自反思、知识库 Verify、人机协同逐步成型，分析深度与可解释性持续增强。</p></div>
+      <div class="tl-item"><b>Fin 3.0</b><p>增设 Screen 荐股板块，Streamlit 多页应用，并沉淀技术设计与三层评测体系。</p></div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -1020,15 +998,7 @@ def page_screen():
         st.info("👈 请在左侧侧边栏选择行业与风险偏好，点击「开始智能筛选」运行工作流。")
 
 # ============================================================== 页面：星火大模型模拟
-def page_spark():
-    st.markdown("""
-    <div class="hero hero-mini">
-      <div class="kicker">iFLYTEK SparkDesk · Simulation Playground</div>
-      <h1 style="font-size:2rem;">🔥 星火大模型模拟</h1>
-      <div class="sub" style="margin-bottom:0;">模拟讯飞星火认知大模型的调用与流式生成 · 本项目 Consult / Screen 均由其驱动</div>
-    </div>
-    """, unsafe_allow_html=True)
-
+def render_spark():
     st.caption("⚠️ 本页面为星火大模型的**模拟演示**：不调用真实 API，生成内容来自内置金融知识库模板，用于还原真实调用链路。")
 
     st.markdown('<div class="sec-title" style="margin-top:18px;">选择模型版本</div><div class="sec-sub">对应星火 Web API 的 domain 参数</div>', unsafe_allow_html=True)
@@ -1170,15 +1140,7 @@ eval_data     = "FinEval"         # 金融多选一评测（34 科目）''', lan
 
 
 # ============================================================== 页面：评估测试
-def page_eval():
-    st.markdown("""
-    <div class="hero hero-mini">
-      <div class="kicker">Evaluation · Triple Verification</div>
-      <h1 style="font-size:2rem;">🧪 测试与评估</h1>
-      <div class="sub" style="margin-bottom:0;">AI as Judge · AI as Customers · Human Check · 消融实验</div>
-    </div>
-    """, unsafe_allow_html=True)
-
+def render_eval():
     st.plotly_chart(bar_chart(), use_container_width=True)
     st.markdown("""
     <div class="card" style="margin-top:8px;">
@@ -1210,15 +1172,7 @@ def page_eval():
         """, unsafe_allow_html=True)
 
 # ============================================================== 页面：技术架构
-def page_tech():
-    st.markdown("""
-    <div class="hero hero-mini">
-      <div class="kicker">Architecture · System-2 Workflow</div>
-      <h1 style="font-size:2rem;">🧠 技术设计</h1>
-      <div class="sub" style="margin-bottom:0;">类人脑 System-2 投顾推理模式 · 多智能体工作流 · 知识库与微调</div>
-    </div>
-    """, unsafe_allow_html=True)
-
+def render_tech():
     st.markdown('<div class="sec-title">Consult 工作流设计</div><div class="sec-sub">类脑 System-2 · 深思熟虑</div>', unsafe_allow_html=True)
     roles = [
         ("👔", "Leader 领导", "任务拆解<br>降本提效", "a-leader"),
@@ -1269,6 +1223,7 @@ def page_tech():
     <div class="step"><b>03 · 可解释性强化</b><br><span style="color:#6B7699;font-size:.88rem">用户可直观观测各智能体协作产生的内容，从整体层面强化可解释性，构建对 AI 的信任。</span></div>
     <div class="step"><b>04 · 知识库增强提示</b><br><span style="color:#6B7699;font-size:.88rem">检索获取的知识库内容融入提示词，大幅提升回答准确性与精度，维护便捷、可持续更新。</span></div>
     """, unsafe_allow_html=True)
+    st.caption("文中 RAG / LoRA / SFT / 四维筛选树 / 三层评测 等术语的精确定义，统一收录在「专有名词解释」页，避免重复展开。")
 
 # ============================================================== 页面：面试建议
 INTERVIEW_BEHAVIOR = [
@@ -1408,7 +1363,7 @@ def page_interview():
                 <div class="step" style="border-left-color:#1E9E6A;"><b>R · 结果</b><br><span style="color:#55607a;font-size:.9rem;">{r}</span></div>
                 """, unsafe_allow_html=True)
 
-    # 第二部分 · 技术高频问答（按 RAG / 微调 / 通用归类，可整体与分组折叠）
+    # 第二部分 · 技术高频问答（按 RAG / 微调 / 通用归类，扁平展示）
     with st.expander("第二部分 · 技术高频问答（RAG / 微调 / 通用 · 点击展开/收起）", expanded=True):
         tech_groups = [
             ("📚 RAG 与知识库", INTERVIEW_TECH_RAG),
@@ -1416,12 +1371,12 @@ def page_interview():
             ("🤖 通用大模型与工程", INTERVIEW_TECH_GEN),
         ]
         for g_title, g_items in tech_groups:
-            with st.expander(f"{g_title}（{len(g_items)} 题 · 点击展开/收起）", expanded=True):
-                for item in g_items:
-                    q, a = item[0], item[1]
-                    star = bool(item[2]) if len(item) > 2 else False
-                    with st.expander(f"**{'⭐ ' if star else ''}{q}**"):
-                        st.markdown(a)
+            st.markdown(f'<div class="sec-title" style="margin-top:10px;font-size:1.02rem;">{g_title}（{len(g_items)} 题）</div>', unsafe_allow_html=True)
+            for item in g_items:
+                q, a = item[0], item[1]
+                star = bool(item[2]) if len(item) > 2 else False
+                with st.expander(f"**{'⭐ ' if star else ''}{q}**"):
+                    st.markdown(a)
 
 # ============================================================== 页面：RAG 知识库
 def _n(x):
@@ -1435,15 +1390,7 @@ def _rag_step(t, d, eg):
             f'border-radius:6px;padding:8px 10px;font-size:.82rem;color:#2E3A52;line-height:1.6;">'
             f'<b style="color:#1E3A6E;">📌 示例</b> · {eg}</div></div>')
 
-def page_kb():
-    st.markdown("""
-    <div class="hero hero-mini">
-      <div class="kicker">Knowledge Base · RAG</div>
-      <h1 style="font-size:2rem;">📚 RAG 知识库</h1>
-      <div class="sub" style="margin-bottom:0;">35 份权威 PDF 向量化建库 · 3329 语义片段 · 4 个行业 collection · 检索结果全部可溯源</div>
-    </div>
-    """, unsafe_allow_html=True)
-
+def render_kb():
     if not KB:
         st.error("知识库 bundle（kb_data.json）未加载，请确认文件存在于 fin_synagent/ 目录。")
         return
@@ -1802,19 +1749,47 @@ def page_glossary():
             st.markdown(f'<div class="gloss-grid">{rows}</div>', unsafe_allow_html=True)
     st.caption("⭐ 标注的为最基础、最重要的核心术语；术语定义面向演示与教学场景，实际投顾落地时请以监管口径与业务规范为准。")
 
+# 技术底座：把星火大模型 / 技术设计 / 测试评估 / RAG 知识库 合并为单页 Tab，避免导航平铺过散
+def page_tech_base():
+    st.markdown("""
+    <div class="hero hero-mini">
+      <div class="kicker">Tech Stack · Multi-Agent / RAG / Fine-tune / Eval</div>
+      <h1 style="font-size:2rem;">🧩 技术底座</h1>
+      <div class="sub" style="margin-bottom:0;">星火大模型 · 技术设计 · 测试评估 · RAG 知识库 —— 四大技术切面，组合成 Fin Synagent 的底层能力</div>
+    </div>
+    """, unsafe_allow_html=True)
+    tab_spark, tab_tech, tab_eval, tab_kb = st.tabs(["🔥 星火大模型", "🧠 技术设计", "🧪 测试评估", "📚 RAG 知识库"])
+    with tab_spark:
+        render_spark()
+    with tab_tech:
+        render_tech()
+    with tab_eval:
+        render_eval()
+    with tab_kb:
+        render_kb()
+
+# 导航分组（按受众）：产品体验 / 技术底座 / 附录参考
+NAV_GROUPS = [
+    ("产品体验", ["首页", "智能咨询", "智能荐股"], ["house-door", "chat-square-text", "graph-up-arrow"]),
+    ("技术底座", ["技术底座", "面试建议"], ["cpu", "mic"]),
+    ("附录参考", ["专有名词解释", "技能中心"], ["book", "boxes"]),
+]
+
+def _select_nav(page):
+    st.session_state["nav"] = page
+    for _t, _o, _i in NAV_GROUPS:
+        st.session_state["nav_" + _t] = page if page in _o else _o[0]
+
 PAGES = {
     "首页": page_home,
     "智能咨询": page_consult,
     "智能荐股": page_screen,
-    "星火大模型": page_spark,
-    "测试评估": page_eval,
-    "技术设计": page_tech,
-    "知识库": page_kb,
-    "技能中心": page_skills,
+    "技术底座": page_tech_base,
     "面试建议": page_interview,
     "专有名词解释": page_glossary,
+    "技能中心": page_skills,
 }
-NAV_ICONS = ["house-door", "chat-square-text", "graph-up-arrow", "fire", "clipboard2-data", "cpu", "database", "boxes", "mic", "book"]
+NAV_ICONS = ["house-door", "chat-square-text", "graph-up-arrow", "cpu", "mic", "book", "boxes"]
 
 with st.sidebar:
     st.markdown("""
@@ -1823,35 +1798,42 @@ with st.sidebar:
       <div class="slogan">MULTI-AGENT ROBO-ADVISOR</div>
     </div>
     """, unsafe_allow_html=True)
-    choice = option_menu(
-        menu_title=None,
-        options=list(PAGES.keys()),
-        icons=NAV_ICONS,
-        default_index=0,
-        styles={
-            "container": {
-                "padding": "10px 8px", "background-color": "#0E2450",
-                "border-radius": "14px", "border": "1px solid rgba(201,162,39,0.35)",
-            },
-            "icon": {"color": "#E8C766", "font-size": "16px"},
-            "nav-link": {
-                "font-size": "16px", "font-family": "Noto Sans SC", "text-align": "left",
-                "margin": "4px 0", "padding": "10px 16px", "border-radius": "12px",
-                "color": "#FFFFFF", "font-weight": "600",
-                "--hover-color": "rgba(201,162,39,0.22)",
-                "border": "1px solid transparent",
-            },
-            "nav-link-selected": {
-                "background": "linear-gradient(90deg, rgba(201,162,39,0.35), rgba(201,162,39,0.10))",
-                "border": "1px solid rgba(201,162,39,0.75)",
-                "color": "#FFE9A8", "font-weight": "800",
-                "border-left": "4px solid #E8C766",
-            },
+    if "nav" not in st.session_state:
+        st.session_state["nav"] = "首页"
+    SB_STYLES = {
+        "container": {
+            "padding": "10px 8px", "background-color": "#0E2450",
+            "border-radius": "14px", "border": "1px solid rgba(201,162,39,0.35)",
         },
-    )
+        "icon": {"color": "#E8C766", "font-size": "16px"},
+        "nav-link": {
+            "font-size": "16px", "font-family": "Noto Sans SC", "text-align": "left",
+            "margin": "4px 0", "padding": "10px 16px", "border-radius": "12px",
+            "color": "#FFFFFF", "font-weight": "600",
+            "--hover-color": "rgba(201,162,39,0.22)",
+            "border": "1px solid transparent",
+        },
+        "nav-link-selected": {
+            "background": "linear-gradient(90deg, rgba(201,162,39,0.35), rgba(201,162,39,0.10))",
+            "border": "1px solid rgba(201,162,39,0.75)",
+            "color": "#FFE9A8", "font-weight": "800",
+            "border-left": "4px solid #E8C766",
+        },
+    }
+    for _title, _opts, _icons in NAV_GROUPS:
+        _key = "nav_" + _title
+        if _key not in st.session_state:
+            st.session_state[_key] = st.session_state["nav"] if st.session_state["nav"] in _opts else _opts[0]
+        _sel = option_menu(menu_title=_title, options=_opts, icons=_icons,
+                          default_index=_opts.index(st.session_state[_key]), key=_key, styles=SB_STYLES)
+        if _sel != st.session_state[_key]:
+            _select_nav(_sel)
+            st.rerun()
     st.markdown("---")
     st.caption("富国开贸团队 · 演示 Demo v2")
     st.caption("⚠️ 数据为模拟数据，不构成投资建议")
+
+choice = st.session_state["nav"]
 
 PAGES[choice]()
 
