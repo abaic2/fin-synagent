@@ -259,6 +259,19 @@ div[data-testid="stSidebar"] .stButton > button[kind="primary"] {{
   text-align:center; color:#96A0BD; font-size:.8rem; margin-top:56px; padding-top:18px;
   border-top:1px solid #E0E6F2;
 }}
+
+/* ---------- 专有名词解释 ---------- */
+.gloss-grid {{ display:grid; grid-template-columns: repeat(2, 1fr); gap:14px; margin:8px 0 26px 0; }}
+.gloss-card {{
+  background: #fff; border:1px solid #E3E8F4; border-left:4px solid {GOLD};
+  border-radius:14px; padding:16px 18px; box-shadow: 0 4px 14px rgba(20,40,80,0.05);
+}}
+.gloss-card .gt {{
+  font-weight:800; font-size:1.02rem; color:{NAVY}; margin-bottom:6px;
+  font-family:"Noto Serif SC",serif;
+}}
+.gloss-card .gd {{ font-size:.92rem; color:#3A4866; line-height:1.65; }}
+@media (max-width: 720px) {{ .gloss-grid {{ grid-template-columns: 1fr; }} }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -1676,6 +1689,49 @@ def page_skills():
     st.info("💡 在 WorkBuddy 中可通过对话直接调用：提到「生成 streamlit demo / 部署」会触发 Deployer；以「Fin Synagent 投顾」身份提问或要求行业分析、荐股，会触发 Fin Synagent 能力版。")
 
 # ============================================================== 导航
+@st.cache_data
+def load_glossary():
+    try:
+        with open(os.path.join(os.path.dirname(__file__), "glossary.json"), encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+def page_glossary():
+    gl = load_glossary()
+    if not gl:
+        st.error("专有名词数据加载失败（glossary.json 缺失）。")
+        return
+    st.markdown(f'''
+    <div class="hero">
+      <div class="kicker">GLOSSARY</div>
+      <h1>📖 {gl.get("title", "专有名词解释")}</h1>
+      <p>{gl.get("intro", "")}</p>
+    </div>''', unsafe_allow_html=True)
+
+    cats = gl.get("categories", [])
+    total = sum(len(c.get("terms", [])) for c in cats)
+    st.markdown(
+        f'<div class="pill">分组 {len(cats)} 类</div>'
+        f'<div class="pill">收录术语 {total} 条</div>',
+        unsafe_allow_html=True)
+
+    for c in cats:
+        icon = c.get("icon", "•")
+        name = c.get("name", "未命名分组")
+        terms = c.get("terms", [])
+        st.markdown(
+            f'<div class="sec-title">{icon} {name}</div>'
+            f'<div class="sec-sub">共 {len(terms)} 条</div>',
+            unsafe_allow_html=True)
+        rows = "".join(
+            f'<div class="gloss-card">'
+            f'<div class="gt">{t.get("term","")}</div>'
+            f'<div class="gd">{t.get("def","")}</div>'
+            f'</div>' for t in terms)
+        st.markdown(f'<div class="gloss-grid">{rows}</div>', unsafe_allow_html=True)
+    st.caption("术语定义面向演示与教学场景，实际投顾落地时请以监管口径与业务规范为准。")
+
 PAGES = {
     "首页": page_home,
     "智能咨询": page_consult,
@@ -1686,8 +1742,9 @@ PAGES = {
     "知识库": page_kb,
     "技能中心": page_skills,
     "面试建议": page_interview,
+    "专有名词解释": page_glossary,
 }
-NAV_ICONS = ["house-door", "chat-square-text", "graph-up-arrow", "fire", "clipboard2-data", "cpu", "database", "boxes", "mic"]
+NAV_ICONS = ["house-door", "chat-square-text", "graph-up-arrow", "fire", "clipboard2-data", "cpu", "database", "boxes", "mic", "book"]
 
 with st.sidebar:
     st.markdown("""
