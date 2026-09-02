@@ -1752,6 +1752,20 @@ def load_glossary():
     except Exception:
         return None
 
+# 核心术语白名单：与 glossary.json 的 "star":true 一致，作为兜底，
+# 确保即使部署环境的 glossary.json 未携带 star 字段，标星依然生效。
+CORE_TERMS = {
+    "多智能体（Multi-Agent）", "System-2 深思熟虑模式", "Leader（领导者智能体）",
+    "可解释性（Interpretability）", "RAG（检索增强生成）", "Chroma", "BGE 嵌入模型",
+    "余弦相似度（Cosine Similarity）", "Top-K", "微调（Fine-tuning）", "LoRA",
+    "SFT（监督微调）", "智能投顾（Robo-Advisor）", "资产配置",
+    "基本面 / 技术面 / 情绪面 / 行业面", "大模型（LLM）", "智能体 / Agent",
+    "提示词（Prompt）", "幻觉（Hallucination）", "AI as Judge", "三层评测体系",
+}
+
+def _is_core(t):
+    return bool(t.get("star")) or (t.get("term") in CORE_TERMS)
+
 def page_glossary():
     gl = load_glossary()
     if not gl:
@@ -1766,7 +1780,7 @@ def page_glossary():
 
     cats = gl.get("categories", [])
     total = sum(len(c.get("terms", [])) for c in cats)
-    n_star = sum(1 for c in cats for t in c.get("terms", []) if t.get("star"))
+    n_star = sum(1 for c in cats for t in c.get("terms", []) if _is_core(t))
     st.markdown(
         f'<div class="pill">分组 {len(cats)} 类</div>'
         f'<div class="pill">收录术语 {total} 条</div>'
@@ -1777,12 +1791,12 @@ def page_glossary():
         icon = c.get("icon", "•")
         name = c.get("name", "未命名分组")
         terms = c.get("terms", [])
-        n_star_cat = sum(1 for t in terms if t.get("star"))
+        n_star_cat = sum(1 for t in terms if _is_core(t))
         star_label = f" · 核心 {n_star_cat} 条" if n_star_cat else ""
         with st.expander(f"{icon} {name}（共 {len(terms)} 条{star_label} · 点击展开/收起）", expanded=True):
             rows = "".join(
                 f'<div class="gloss-card">'
-                f'<div class="gt{" gt-star" if t.get("star") else ""}">{"⭐ " if t.get("star") else ""}{t.get("term","")}</div>'
+                f'<div class="gt{" gt-star" if _is_core(t) else ""}">{"⭐ " if _is_core(t) else ""}{t.get("term","")}</div>'
                 f'<div class="gd">{t.get("def","")}</div>'
                 f'</div>' for t in terms)
             st.markdown(f'<div class="gloss-grid">{rows}</div>', unsafe_allow_html=True)
