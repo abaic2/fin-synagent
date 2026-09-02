@@ -1072,6 +1072,84 @@ def page_spark():
                 st.json(mock_spark_response(model, q, answer, temperature, top_k, max_tokens))
         st.session_state["spark_history"].append({"role": "assistant", "content": answer})
 
+    # 微调专区：金融 SFT 数据集 + 训练全流程（SparkPro + LoRA）
+    ft = KB.get("finetune", {}) if KB else {}
+
+    # 金融微调数据集
+    st.markdown('<div class="sec-title">金融微调数据集</div><div class="sec-sub">支撑星火 SparkPro 基座 SFT 微调（lr=8e-5，5 epochs），提升金融领域专业性与「投资」关键词捕捉能力</div>', unsafe_allow_html=True)
+    fc = ft.get("fincuge", {})
+    dc = ft.get("disc", {})
+    fe = ft.get("fineval", {})
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.markdown(f"""
+        <div class="card" style="height:100%">
+          <div class="icon">📘</div>
+          <h4>FinCUGE-Instruction</h4>
+          <p><b>训练 {_n(fc.get('train',0))}</b> · 评测 {_n(fc.get('eval',0))} · 合计 <b>{_n(fc.get('total',0))}</b><br>
+          金融通用理解评测指令集（Apache-2.0），覆盖 FINFE 等数十类任务。</p>
+        </div>""", unsafe_allow_html=True)
+        if fc.get("samples"):
+            with st.expander("查看样例"):
+                for s in fc["samples"][:2]:
+                    st.markdown(f"**任务**：{s['task']}  \n**指令**：{s['instruction']}  \n**输出**：{s['output']}")
+    with c2:
+        parts = dc.get("parts", {})
+        part_txt = "、".join(f"{k} {v}" for k, v in parts.items()) if parts else ""
+        st.markdown(f"""
+        <div class="card" style="height:100%">
+          <div class="icon">📗</div>
+          <h4>DISC-Fin-SFT</h4>
+          <p><b>合计 {_n(dc.get('total',0))}</b> 条金融指令数据（{part_txt}）<br>
+          涵盖计算、咨询、检索、任务四类，指令-输入-输出配对。</p>
+        </div>""", unsafe_allow_html=True)
+        if dc.get("samples"):
+            with st.expander("查看样例"):
+                for s in dc["samples"][:1]:
+                    st.markdown(f"**指令**：{s['instruction']}  \n**输出**：{s['output']}")
+    with c3:
+        splits = fe.get("splits", {})
+        st.markdown(f"""
+        <div class="card" style="height:100%">
+          <div class="icon">📙</div>
+          <h4>FinEval</h4>
+          <p><b>合计 {_n(fe.get('total',0))}</b> 道多选一 · <b>{fe.get('subjects','—')}</b> 个金融科目（上财）<br>
+          切分：dev {_n(splits.get('dev',0))} / val {_n(splits.get('val',0))} / test {_n(splits.get('test',0))}。</p>
+        </div>""", unsafe_allow_html=True)
+        if fe.get("samples"):
+            with st.expander("查看样例（金融·val）"):
+                s = fe["samples"][0]
+                st.markdown(f"**题**：{s['question']}")
+                for i, o in enumerate(s.get("options", [])):
+                    st.write(f"{'ABCD'[i]}. {o}")
+                st.markdown(f"**答案**：{s['answer']}  \n**解析**：{s['explanation']}")
+
+
+    # 微调训练全流程（每步含示例）
+    st.markdown('<div class="sec-title">微调训练全流程</div><div class="sec-sub">基座 SparkPro + LoRA 低秩适配，用金融指令集 SFT 强化领域能力与「投资」语义捕捉；数据集卡片见上方「金融微调数据集」</div>', unsafe_allow_html=True)
+    for t, d, eg in [
+        ("数据集准备", "以 FinCUGE-Instruction（13.8 万条通用金融指令，覆盖 FINFE 等数十类任务）为主干保证覆盖面，叠加 DISC-Fin-SFT（400 条计算/咨询/检索/任务四类专业场景）做领域增强，让模型既『懂金融话术』又『会算、会查』；FinEval（4.6k 多选一、34 科目）仅作评测集、不参与训练，避免数据泄漏。三类数据均来自公开权威，训练集按 9:1 混合。",
+         "训练混合样例：『对比红利策略与成长策略的风险收益特征』→ 红利低波动高股息防御；成长高弹性"),
+        ("任务设计（SFT）", "监督微调的训练目标有三：① 强化『投资/荐股/风险』等高频语义的精准捕捉；② 统一金融专业口吻（克制、严谨、带数据）；③ 内建合规约束——输出必带『以上不构成投资建议』，只给分析思路、不荐具体买卖。指令-输出配对由人工校验模板生成，确保风格一致、无违规表述。",
+         "输出必带『以上不构成投资建议』；不荐具体买卖，只给思路"),
+        ("训练配置", "基座选星火 SparkPro，采用 LoRA 低秩适配：冻结原始权重，仅在注意力模块的 Query/Value 投影旁插入秩 r=16 的低秩矩阵（alpha=32），可训练参数量 < 原模型 1%。学习率 8e-5、训练 5 个 epoch、batch 适配单卡显存。LoRA 让单卡即可微调，且多个适配器可热插拔、互不干扰。",
+         "lora_r=16, lora_alpha=32, learning_rate=8e-5, epochs=5"),
+        ("训练执行", "LoRA 参数量极小，单张消费级显卡即可完成训练；过程中每轮在验证集记录 eval_acc，并在 loss 进入平台期时早停以防过拟合。多适配器机制支持同一基座挂载不同行业/任务 LoRA，推理时按需切换，无需为每场景重训全模型。",
+         "epoch 5/5 loss=0.159  eval_acc=0.685"),
+        ("评测", "三维评测：① 客观——FinEval 34 科目多选一准确率；② 主观——AI Judge（对照标准答案打分）+ AI as Customers（模拟用户满意度）+ 金融专业研究生人工评测；③ 消融——有无 RAG / 有无微调的对比实验，量化每个模块的增量收益。",
+         "FinEval 61.2%→68.5%（+7.3pt）；咨询评分 4.1→4.6/5"),
+    ]:
+        st.markdown(_rag_step(t, d, eg), unsafe_allow_html=True)
+    with st.expander("⚙️ 微调配置示例（星火 SparkPro + LoRA）"):
+        st.code('''base_model    = "SparkPro"        # 星火大模型基座
+method        = "LoRA"           # 低秩适配，冻结原权重
+lora_r, lora_alpha = 16, 32
+learning_rate = 8e-5
+epochs        = 5
+train_data    = ["FinCUGE-Instruction", "DISC-Fin-SFT"]
+eval_data     = "FinEval"         # 金融多选一评测（34 科目）''', language="python")
+
+
 # ============================================================== 页面：评估测试
 def page_eval():
     st.markdown("""
@@ -1276,7 +1354,7 @@ def page_interview():
         with st.expander(f"**{q}**"):
             st.markdown(a)
 
-# ============================================================== 页面：知识库与微调
+# ============================================================== 页面：RAG 知识库
 def _n(x):
     return f"{x:,}" if isinstance(x, int) else str(x)
 
@@ -1291,9 +1369,9 @@ def _rag_step(t, d, eg):
 def page_kb():
     st.markdown("""
     <div class="hero hero-mini">
-      <div class="kicker">Knowledge Base · RAG & Fine-tuning</div>
-      <h1 style="font-size:2rem;">📚 知识库与微调</h1>
-      <div class="sub" style="margin-bottom:0;">35 份权威 PDF 向量化建库 · 3329 语义片段 · 3 套金融微调数据集 · 检索结果全部可溯源</div>
+      <div class="kicker">Knowledge Base · RAG</div>
+      <h1 style="font-size:2rem;">📚 RAG 知识库</h1>
+      <div class="sub" style="margin-bottom:0;">35 份权威 PDF 向量化建库 · 3329 语义片段 · 4 个行业 collection · 检索结果全部可溯源</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -1303,8 +1381,6 @@ def page_kb():
 
     stats = KB.get("kb_stats", {})
     retrieval = KB.get("retrieval", {})
-    ft = KB.get("finetune", {})
-
     # 一、RAG 知识库规模
     st.markdown('<div class="sec-title">RAG 知识库规模</div><div class="sec-sub">PDF → Markdown → 语义切分 → 中文向量化（bge 512 维）→ Chroma 持久化（4 个行业 collection）</div>', unsafe_allow_html=True)
     kpi = [
@@ -1345,56 +1421,7 @@ def page_kb():
                     f'<div class="src">📄 <b>{h["source"]}</b> · p{h["page"]} · 相似度 <b>{h["score"]:.3f}</b><br>'
                     f'<span style="color:#4A6A56;">{h["text"]}</span></div>', unsafe_allow_html=True)
 
-    # 三、微调数据集
-    st.markdown('<div class="sec-title">金融微调数据集</div><div class="sec-sub">支撑星火 SparkPro 基座 SFT 微调（lr=8e-5，5 epochs），提升金融领域专业性与「投资」关键词捕捉能力</div>', unsafe_allow_html=True)
-    fc = ft.get("fincuge", {})
-    dc = ft.get("disc", {})
-    fe = ft.get("fineval", {})
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.markdown(f"""
-        <div class="card" style="height:100%">
-          <div class="icon">📘</div>
-          <h4>FinCUGE-Instruction</h4>
-          <p><b>训练 {_n(fc.get('train',0))}</b> · 评测 {_n(fc.get('eval',0))} · 合计 <b>{_n(fc.get('total',0))}</b><br>
-          金融通用理解评测指令集（Apache-2.0），覆盖 FINFE 等数十类任务。</p>
-        </div>""", unsafe_allow_html=True)
-        if fc.get("samples"):
-            with st.expander("查看样例"):
-                for s in fc["samples"][:2]:
-                    st.markdown(f"**任务**：{s['task']}  \n**指令**：{s['instruction']}  \n**输出**：{s['output']}")
-    with c2:
-        parts = dc.get("parts", {})
-        part_txt = "、".join(f"{k} {v}" for k, v in parts.items()) if parts else ""
-        st.markdown(f"""
-        <div class="card" style="height:100%">
-          <div class="icon">📗</div>
-          <h4>DISC-Fin-SFT</h4>
-          <p><b>合计 {_n(dc.get('total',0))}</b> 条金融指令数据（{part_txt}）<br>
-          涵盖计算、咨询、检索、任务四类，指令-输入-输出配对。</p>
-        </div>""", unsafe_allow_html=True)
-        if dc.get("samples"):
-            with st.expander("查看样例"):
-                for s in dc["samples"][:1]:
-                    st.markdown(f"**指令**：{s['instruction']}  \n**输出**：{s['output']}")
-    with c3:
-        splits = fe.get("splits", {})
-        st.markdown(f"""
-        <div class="card" style="height:100%">
-          <div class="icon">📙</div>
-          <h4>FinEval</h4>
-          <p><b>合计 {_n(fe.get('total',0))}</b> 道多选一 · <b>{fe.get('subjects','—')}</b> 个金融科目（上财）<br>
-          切分：dev {_n(splits.get('dev',0))} / val {_n(splits.get('val',0))} / test {_n(splits.get('test',0))}。</p>
-        </div>""", unsafe_allow_html=True)
-        if fe.get("samples"):
-            with st.expander("查看样例（金融·val）"):
-                s = fe["samples"][0]
-                st.markdown(f"**题**：{s['question']}")
-                for i, o in enumerate(s.get("options", [])):
-                    st.write(f"{'ABCD'[i]}. {o}")
-                st.markdown(f"**答案**：{s['answer']}  \n**解析**：{s['explanation']}")
-
-    # 四、RAG 全流程详解（每步含真实示例）
+    # 三、RAG 全流程详解（每步含真实示例）
     st.markdown('<div class="sec-title">RAG 全流程详解</div><div class="sec-sub">检索增强生成：离线建库 + 在线查询两端，全部基于本项目真实代码与数据</div>', unsafe_allow_html=True)
     ro, rq = st.columns(2)
     with ro:
@@ -1433,30 +1460,6 @@ def page_kb():
 res = coll.query(query_embeddings=[qe], n_results=3,
                  include=["documents", "metadatas", "distances"])
 sim = 1 - res["distances"][0][0]      # 余弦相似度（cosine 距离取补）''', language="python")
-
-    # 五、微调训练全流程（每步含示例）
-    st.markdown('<div class="sec-title">微调训练全流程</div><div class="sec-sub">基座 SparkPro + LoRA 低秩适配，用金融指令集 SFT 强化领域能力与「投资」语义捕捉；数据集卡片见上方第三节</div>', unsafe_allow_html=True)
-    for t, d, eg in [
-        ("数据集准备", "以 FinCUGE-Instruction（13.8 万条通用金融指令，覆盖 FINFE 等数十类任务）为主干保证覆盖面，叠加 DISC-Fin-SFT（400 条计算/咨询/检索/任务四类专业场景）做领域增强，让模型既『懂金融话术』又『会算、会查』；FinEval（4.6k 多选一、34 科目）仅作评测集、不参与训练，避免数据泄漏。三类数据均来自公开权威，训练集按 9:1 混合。",
-         "训练混合样例：『对比红利策略与成长策略的风险收益特征』→ 红利低波动高股息防御；成长高弹性"),
-        ("任务设计（SFT）", "监督微调的训练目标有三：① 强化『投资/荐股/风险』等高频语义的精准捕捉；② 统一金融专业口吻（克制、严谨、带数据）；③ 内建合规约束——输出必带『以上不构成投资建议』，只给分析思路、不荐具体买卖。指令-输出配对由人工校验模板生成，确保风格一致、无违规表述。",
-         "输出必带『以上不构成投资建议』；不荐具体买卖，只给思路"),
-        ("训练配置", "基座选星火 SparkPro，采用 LoRA 低秩适配：冻结原始权重，仅在注意力模块的 Query/Value 投影旁插入秩 r=16 的低秩矩阵（alpha=32），可训练参数量 < 原模型 1%。学习率 8e-5、训练 5 个 epoch、batch 适配单卡显存。LoRA 让单卡即可微调，且多个适配器可热插拔、互不干扰。",
-         "lora_r=16, lora_alpha=32, learning_rate=8e-5, epochs=5"),
-        ("训练执行", "LoRA 参数量极小，单张消费级显卡即可完成训练；过程中每轮在验证集记录 eval_acc，并在 loss 进入平台期时早停以防过拟合。多适配器机制支持同一基座挂载不同行业/任务 LoRA，推理时按需切换，无需为每场景重训全模型。",
-         "epoch 5/5 loss=0.159  eval_acc=0.685"),
-        ("评测", "三维评测：① 客观——FinEval 34 科目多选一准确率；② 主观——AI Judge（对照标准答案打分）+ AI as Customers（模拟用户满意度）+ 金融专业研究生人工评测；③ 消融——有无 RAG / 有无微调的对比实验，量化每个模块的增量收益。",
-         "FinEval 61.2%→68.5%（+7.3pt）；咨询评分 4.1→4.6/5"),
-    ]:
-        st.markdown(_rag_step(t, d, eg), unsafe_allow_html=True)
-    with st.expander("⚙️ 微调配置示例（星火 SparkPro + LoRA）"):
-        st.code('''base_model    = "SparkPro"        # 星火大模型基座
-method        = "LoRA"           # 低秩适配，冻结原权重
-lora_r, lora_alpha = 16, 32
-learning_rate = 8e-5
-epochs        = 5
-train_data    = ["FinCUGE-Instruction", "DISC-Fin-SFT"]
-eval_data     = "FinEval"         # 金融多选一评测（34 科目）''', language="python")
 
 # ============================================================== 页面：技能中心
 def page_skills():
@@ -1607,7 +1610,7 @@ def page_skills():
             else:
                 st.warning("该脚本未随部署包提供。")
 
-    st.info("📚 RAG 全流程与微调训练全流程的<b>详细步骤与每步真实示例</b>，已整合进「知识库与微调」页（点左侧导航查看）；上方 <b>8 个工程脚本</b>均实时读取随 Demo 部署的真实 <code>.py</code> 文件，展开可看完整源码并一键下载，与 Fin Synagent / Deployer 技能内置版本完全一致。")
+    st.info("📚 <b>RAG 全流程</b>的详细步骤与每步真实示例在「知识库」页；<b>金融微调数据集 + 微调训练全流程</b>已移至「星火大模型」页（点左侧导航查看）；上方 <b>8 个工程脚本</b>均实时读取随 Demo 部署的真实 <code>.py</code> 文件，展开可看完整源码并一键下载，与 Fin Synagent / Deployer 技能内置版本完全一致。")
 
     st.info("💡 在 WorkBuddy 中可通过对话直接调用：提到「生成 streamlit demo / 部署」会触发 Deployer；以「Fin Synagent 投顾」身份提问或要求行业分析、荐股，会触发 Fin Synagent 能力版。")
 
@@ -1619,7 +1622,7 @@ PAGES = {
     "星火大模型": page_spark,
     "测试评估": page_eval,
     "技术设计": page_tech,
-    "知识库与微调": page_kb,
+    "知识库": page_kb,
     "技能中心": page_skills,
     "面试建议": page_interview,
 }
