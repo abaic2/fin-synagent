@@ -830,16 +830,6 @@ def page_consult():
     </div>
     """, unsafe_allow_html=True)
 
-    with st.sidebar:
-        st.markdown("### 🧭 引导词")
-        for gp in GUIDE_PROMPTS:
-            if st.button(gp, key=f"guide_{gp}", use_container_width=True):
-                st.session_state["pending_query"] = gp
-        st.markdown("---")
-        st.markdown("### ⚙️ 任务分解程度")
-        decomp_level = st.slider("拆解粒度（人机协同选项）", 1, 5, 3)
-        st.caption("粒度越高，子任务越细，专家注意力越集中。")
-
     st.markdown("""
     <div style="margin-bottom:14px;">
       <span class="pill">人机交互</span><span class="pill">System-2</span><span class="pill">Multi-Agent</span>
@@ -855,15 +845,26 @@ def page_consult():
         st.session_state["consult_query_input"] = ""
         del st.session_state["_clear_query"]
 
-    # 居中的咨询输入框
-    _, center_col, _ = st.columns([1, 1, 1])
+    # 居中的咨询面板：输入框 + 引导词 + 任务分解程度，减少两侧空白
+    _, center_col, _ = st.columns([1, 2, 1])
     with center_col:
+        st.markdown("<div style='font-weight:600;color:#0D1B3E;margin-bottom:8px;'>🧭 引导词快速提问</div>", unsafe_allow_html=True)
+        gcols = st.columns(2)
+        for idx, gp in enumerate(GUIDE_PROMPTS):
+            with gcols[idx % 2]:
+                if st.button(gp, key=f"guide_{gp}", use_container_width=True):
+                    st.session_state["pending_query"] = gp
+
         query = st.text_input(
             "投资咨询问题",
             placeholder="请输入您的投资咨询问题，例如：白酒行业最近行情如何？",
             label_visibility="collapsed",
             key="consult_query_input"
         )
+
+        st.markdown("<div style='font-weight:600;color:#0D1B3E;margin:10px 0 6px 0;'>⚙️ 任务分解程度</div>", unsafe_allow_html=True)
+        decomp_level = st.slider("拆解粒度（人机协同选项）", 1, 5, 3, label_visibility="collapsed")
+        st.caption("粒度越高，子任务越细，专家注意力越集中。")
 
     # 引导词点击：直接作为 query 发送（不回显到输入框，与原 chat_input 行为一致）
     if "pending_query" in st.session_state:
