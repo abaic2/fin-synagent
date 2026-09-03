@@ -850,15 +850,24 @@ def page_consult():
     if "chat" not in st.session_state:
         st.session_state["chat"] = []
 
+    # 居中的咨询输入框
+    _, center_col, _ = st.columns([1, 2, 1])
+    with center_col:
+        if "pending_query" in st.session_state:
+            st.session_state["consult_query_input"] = st.session_state.pop("pending_query")
+        query = st.text_input(
+            "投资咨询问题",
+            placeholder="请输入您的投资咨询问题，例如：白酒行业最近行情如何？",
+            label_visibility="collapsed",
+            key="consult_query_input"
+        )
+
     for msg in st.session_state["chat"]:
         with st.chat_message(msg["role"], avatar="🧑‍💼" if msg["role"] == "user" else "🚩"):
             st.markdown(msg["content"])
 
-    query = st.chat_input("请输入您的投资咨询问题，例如：白酒行业最近行情如何？")
-    if "pending_query" in st.session_state:
-        query = st.session_state.pop("pending_query")
-
     if query:
+        st.session_state["consult_query_input"] = ""  # 清空输入框，避免重复提交
         st.session_state["chat"].append({"role": "user", "content": query})
         with st.chat_message("user", avatar="🧑‍💼"):
             st.markdown(query)
