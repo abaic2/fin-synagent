@@ -7,6 +7,7 @@ UI 全面升级 + 星火大模型模拟引擎
 import os
 import json
 import time
+import datetime
 import random
 import numpy as np
 import pandas as pd
@@ -843,58 +844,160 @@ def _fmt_mv(yuan):
     return f"{yi:.0f}亿"
 
 
-def fetch_realtime(codes):
-    """批量获取实时行情，返回 {code: {name, price, chg, mv}}。失败返回空 dict。"""
-    out = {}
-    for code in codes:
-        secid = _em_secid(code)
-        url = (f"https://push2.eastmoney.com/api/qt/stock/get?secid={secid}"
-               f"&fields=f43,f57,f58,f60,f116&fltt=2&invt=2")
+def _yh_symbol(code: str) -> str:
+    """600519.SH -> 600519.SS ; 000858.SZ -> 000858.SZ（Yahoo 命名）"""
+    base, mkt = code.split(".")
+    return base + (".SS" if mkt.upper() == "SH" else ".SZ")
+
+
+_YH_HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+
+
+def _http_get_json(url, headers, retries: int = 2, timeout: int = 6):
+    """带退避重试的 JSON GET；全部失败则抛出最后一次异常。"""
+    last = None
+    for i in range(retries):
         try:
-            req = _ur.Request(url, headers=_EM_HEADERS)
-            with _ur.urlopen(req, timeout=5) as r:
-                data = json.loads(r.read().decode("utf-8"))
-            d = (data.get("data") or {})
-            if not d:
-                continue
-            price = _to_float(d.get("f43"))
-            prev = _to_float(d.get("f60"))
-            if price is None or price == 0:
-                continue
-            chg = (price - prev) / prev * 100 if prev else 0.0
-            out[code] = {
-                "name": (d.get("f58") or code).replace(" ", ""),
-                "price": price,
-                "chg": round(chg, 2),
-                "mv": _to_float(d.get("f116")),  # 总市值（元）
-            }
-        except Exception:
-            continue
-        time.sleep(0.12)  # 礼貌间隔，降低东方财富限流概率
-    return out
+            req = _ur.Request(url, headers=headers)
+            with _ur.urlopen(req, timeout=timeout) as r:
+                return json.loads(r.read().decode("utf-8"))
+        except Exception as e:
+            last = e
+            time.sleep(0.4 * (i + 1))
+    raise last or RuntimeError("request failed")
 
 
-def fetch_kline(code, days: int = 120):
-    """获取真实日K收盘价序列，返回 DataFrame[date, close] 或 None。"""
+def _em_realtime_one(code):
+    """单只：东方财富实时报价。返回 {name, price, chg, mv} 或 None。"""
+    secid = _em_secid(code)
+    url = (f"https://push2.eastmoney.com/api/qt/stock/get?secid={secid}"
+           f"&fields=f43,f57,f58,f60,f116&fltt=2&invt=2")
+    data = _http_get_json(url, _EM_HEADERS, retries=1, timeout=5)
+    d = (data.get("data") or {})
+    if not d:
+        return None
+    price = _to_float(d.get("f43"))
+    prev = _to_float(d.get("f60"))
+    if price is None or price == 0:
+        return None
+    chg = (price - prev) / prev * 100 if prev else 0.0
+    return {
+        "name": (d.get("f58") or code).replace(" ", ""),
+        "price": price,
+        "chg": round(chg, 2),
+        "mv": _to_float(d.get("f116")),
+    }
+
+
+def _yh_realtime_one(code):
+    """单只：Yahoo Finance 实时报价（全球可达，无需 key）。返回 {name, price, chg, mv} 或 None。"""
+    sym = _yh_symbol(code)
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{sym}?interval=1d&range=5d"
+    data = _http_get_json(url, _YH_HEADERS, retries=3, timeout=6)
+    m = (data.get("chart") or {}).get("result", [{}])[0].get("meta", {})
+    price = _to_float(m.get("regularMarketPrice"))
+    prev = _to_float(m.get("chartPreviousClose") or m.get("previousClose"))
+    if price is None or price == 0 or not prev:
+        return None
+    return {
+        "name": (m.get("shortName") or code).replace(" ", ""),
+        "price": price,
+        "chg": round((price - prev) / prev * 100, 2),
+        "mv": _to_float(m.get("marketCap")),
+    }
+
+
+def fetch_realtime(codes):
+    """批量获取实时行情，返回 ( {code: {name, price, chg, mv}}, src )。
+    src ∈ {eastmoney, yahoo, eastmoney+yahoo, none}。
+    主源东方财富（带 1 次退避重试，降低境外节点限流），失败回退 Yahoo Finance。"""
+    out = {}
+    used_em = used_yh = False
+    for code in codes:
+        rec = None
+        for attempt in range(2):  # 东方财富：1 次重试 + 退避
+            try:
+                rec = _em_realtime_one(code)
+                if rec:
+                    break
+            except Exception:
+                rec = None
+            time.sleep(0.3 * (attempt + 1))
+        if rec:
+            used_em = True
+        else:  # 东方财富不通（常见于境外部署）→ 回退 Yahoo
+            try:
+                rec = _yh_realtime_one(code)
+                if rec:
+                    used_yh = True
+            except Exception:
+                rec = None
+        if rec:
+            out[code] = rec
+        time.sleep(0.08)
+    if used_em and used_yh:
+        src = "eastmoney+yahoo"
+    elif used_em:
+        src = "eastmoney"
+    elif used_yh:
+        src = "yahoo"
+    else:
+        src = "none"
+    return out, src
+
+
+def _em_kline(code, days: int = 120):
     secid = _em_secid(code)
     url = (f"https://push2his.eastmoney.com/api/qt/stock/kline/get?secid={secid}"
            f"&klt=101&fqt=0&lmt={days}&end=20500101"
            f"&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61")
-    try:
-        req = _ur.Request(url, headers=_EM_HEADERS)
-        with _ur.urlopen(req, timeout=6) as r:
-            data = json.loads(r.read().decode("utf-8"))
-        klines = (data.get("data") or {}).get("klines") or []
-        rows = []
-        for kl in klines:
-            parts = kl.split(",")
-            if len(parts) >= 3:
-                rows.append((parts[0], float(parts[2])))  # f51 日期, f53 收盘
-        if not rows:
-            return None
-        return pd.DataFrame(rows, columns=["date", "close"])
-    except Exception:
+    data = _http_get_json(url, _EM_HEADERS, retries=1, timeout=6)
+    klines = (data.get("data") or {}).get("klines") or []
+    rows = []
+    for kl in klines:
+        parts = kl.split(",")
+        if len(parts) >= 3:
+            rows.append((parts[0], float(parts[2])))  # f51 日期, f53 收盘
+    if not rows:
         return None
+    return pd.DataFrame(rows, columns=["date", "close"])
+
+
+def _yh_kline(code, days: int = 120):
+    sym = _yh_symbol(code)
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{sym}?interval=1d&range={days}d"
+    data = _http_get_json(url, _YH_HEADERS, retries=3, timeout=6)
+    res = (data.get("chart") or {}).get("result", [{}])[0]
+    ts = res.get("timestamp") or []
+    closes = ((res.get("indicators") or {}).get("quote") or [{}])[0].get("close") or []
+    rows = []
+    for t, c in zip(ts, closes):
+        if c is None:
+            continue
+        rows.append((datetime.datetime.fromtimestamp(t, tz=datetime.timezone.utc).strftime("%Y-%m-%d"), float(c)))
+    if not rows:
+        return None
+    return pd.DataFrame(rows, columns=["date", "close"])
+
+
+def fetch_kline(code, days: int = 120):
+    """获取真实日K收盘价序列，返回 DataFrame[date, close] 或 None。
+    主源东方财富（带 1 次退避重试），失败回退 Yahoo Finance。"""
+    for attempt in range(2):
+        try:
+            df = _em_kline(code, days)
+            if df is not None and len(df) >= 2:
+                return df
+        except Exception:
+            pass
+        time.sleep(0.3 * (attempt + 1))
+    try:
+        df = _yh_kline(code, days)
+        if df is not None and len(df) >= 2:
+            return df
+    except Exception:
+        pass
+    return None
 
 
 def _compute_tech(close_list):
@@ -1335,7 +1438,7 @@ def page_screen():
         run = st.button("🚀 开始智能筛选", use_container_width=True, type="primary")
 
     feat = INDUSTRY_FEATURE[industry]
-    _ds_src = "东方财富实时行情（push2 报价 + 日K 技术指标）" if _use_real else "内置示例行情（演示模式）"
+    _ds_src = "实时行情接口（东方财富 / Yahoo Finance 备用）" if _use_real else "内置示例行情（演示模式）"
     st.markdown(f"**当前方案**：行业 = `{industry}` · 风险偏好 = `{risk}` · 数据源 = {_ds_src} / 财务与情绪为建模特征")
 
     if run:
@@ -1344,12 +1447,13 @@ def page_screen():
 
         # 📡 实时行情接入（仅真实模式拉取；演示模式使用内置示例数据）
         if _use_real:
-            with st.status("📡 **实时行情获取** · 拉取东方财富实时报价与日K…", expanded=True) as s:
-                rt = fetch_realtime(all_codes)
+            with st.status("📡 **实时行情获取** · 拉取实时报价与日K…", expanded=True) as s:
+                rt, rt_src = fetch_realtime(all_codes)
                 klines = {code: fetch_kline(code, 120) for code in all_codes}
                 ok = sum(1 for c in all_codes if c in rt)
+                _src_lbl = {"eastmoney": "东方财富", "yahoo": "Yahoo Finance", "eastmoney+yahoo": "东方财富+Yahoo Finance"}.get(rt_src, "实时接口")
                 if ok:
-                    st.success(f"✅ 已获取 {ok}/{len(all_codes)} 只标的实时行情（最新价 / 涨跌幅 / 总市值），技术面（MA/MACD）由真实日K计算。")
+                    st.success(f"✅ 已获取 {ok}/{len(all_codes)} 只标的实时行情（来源：{_src_lbl}；最新价 / 涨跌幅 / 总市值来自真实接口，技术面由真实日K计算）。")
                 else:
                     st.warning("⚠️ 实时行情获取失败（网络受限，常见于境外部署节点），已回退至内置演示数据。")
                 s.update(label="📡 **实时行情获取** · 完成", state="complete")
