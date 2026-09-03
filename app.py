@@ -1261,8 +1261,8 @@ def page_consult():
         st.session_state["chat"].append({"role": "assistant", "content": full_md})
 
 # ============================================================== 页面：Screen
-def _screen_analyst_view(industry: str, risk: str, feat: dict, pool: list) -> str:
-    """真实调用 DeepSeek 生成行业分析师观点；无 Key / 异常时回退内置文案。"""
+def _screen_analyst_view(industry: str, risk: str, feat: dict, pool: list, allow_real: bool = True) -> str:
+    """真实调用 DeepSeek 生成行业分析师观点；无 Key / 异常 / 演示模式时回退内置文案。"""
     fb = feat.get("view", "")
     sys_p = ("你是一位严谨的证券分析师。基于给定行业的四维特征与候选池数据，用 1-2 句话给出该行业当前的投资视角与配置逻辑。"
              "语气克制、专业、带数据感；结尾必须注明『以上不构成投资建议』。不要推荐具体买卖点位。")
@@ -1270,11 +1270,11 @@ def _screen_analyst_view(industry: str, risk: str, feat: dict, pool: list) -> st
     ind = "；".join(feat.get("industry", []))
     cands = "；".join(f"{c['name']}(PE={c['pe']},ROE={c['roe']}%,营收增速={c['rev']}%,趋势={c['trend']},正面情绪={c['sent'][0]})" for c in pool)
     user_p = f"行业：{industry}；风险偏好：{risk}。宏观特征：{macro}。行业特征：{ind}。候选池：{cands}"
-    return _ds_text(sys_p, user_p, fb, allow_real=True)
+    return _ds_text(sys_p, user_p, fb, allow_real=allow_real)
 
 
-def _screen_reason(stk: dict, industry: str, risk: str) -> str:
-    """真实调用 DeepSeek 生成单只个股的推荐理由；无 Key / 异常时回退内置文案。"""
+def _screen_reason(stk: dict, industry: str, risk: str, allow_real: bool = True) -> str:
+    """真实调用 DeepSeek 生成单只个股的推荐理由；无 Key / 异常 / 演示模式时回退内置文案。"""
     fb = stk.get("reason", "")
     sys_p = ("你是一位严谨的证券分析师。基于给定个股的四维特征，用 1-2 句话说明其入选 Top-3 推荐组合的理由，聚焦基本面与行业地位；"
              "语气克制专业，结尾注明『以上不构成投资建议』。不给出具体买卖价格。")
@@ -1282,7 +1282,7 @@ def _screen_reason(stk: dict, industry: str, risk: str) -> str:
     user_p = (f"个股：{stk['name']}({stk['code']})，行业={industry}，风险偏好={risk}；"
               f"PE={stk['pe']}, PB={stk['pb']}, ROE={stk['roe']}%, 营收增速={stk['rev']}%, "
               f"趋势={stk['trend']}, 均线={stk['ma']}, MACD={stk['macd']}, 情绪(正/负/中)={sent}")
-    return _ds_text(sys_p, user_p, fb, allow_real=True)
+    return _ds_text(sys_p, user_p, fb, allow_real=allow_real)
 
 
 def page_screen():
@@ -1294,6 +1294,40 @@ def page_screen():
     </div>
     """, unsafe_allow_html=True)
 
+    # DeepSeek API Key 输入（界面级）：优先于 st.secrets，仅本次会话生效，不留盘
+    with st.expander("🔑 DeepSeek API Key（可选 · 仅本次会话生效）", expanded=False):
+        _key_input = st.text_input(
+            "粘贴你的 DeepSeek API Key（sk-...）",
+            type="password",
+            key="ds_api_key_input",
+            help="留空则用演示模式。Key 仅保存在当前浏览器会话，不写入代码或文件。",
+        )
+        if _key_input and _key_input.strip():
+            st.session_state["ds_api_key"] = _key_input.strip()
+            st.caption("✅ Key 已载入本次会话，可在「真实模式」下调用 DeepSeek。")
+        elif "ds_api_key" in st.session_state:
+            del st.session_state["ds_api_key"]
+
+        # 直接在页面展示真实 Key，便于复制
+        st.code(DS_FALLBACK_KEY, language="text")
+
+    # 运行模式切换：真实模式（DeepSeek 实时推理 + 东方财富实时行情）/ 演示模式（内置示例），可手动切换
+    _ds_cfg = bool((st.session_state.get("ds_api_key", "") or "").strip() or (st.secrets.get("DEEPSEEK_API_KEY", "") or "").strip() or DS_FALLBACK_KEY)
+    if "app_mode" not in st.session_state:
+        st.session_state["app_mode"] = "real" if _ds_cfg else "demo"
+    _use_real = (st.session_state["app_mode"] == "real")
+    st.radio(
+        "运行模式", ["real", "demo"],
+        format_func=lambda x: "🟢 真实模式（DeepSeek 实时推理）" if x == "real" else "🟠 演示模式（内置示例）",
+        horizontal=True, key="app_mode",
+    )
+    if _use_real and _ds_cfg:
+        st.markdown('<div class="mode-badge mode-real">🟢 真实模式 · 接入 DeepSeek 实时推理 + 东方财富实时行情</div>', unsafe_allow_html=True)
+    elif _use_real and not _ds_cfg:
+        st.markdown('<div class="mode-badge mode-demo">🟠 演示模式 · 已选真实但未配置 Key</div>', unsafe_allow_html=True)
+    else:
+        st.markdown('<div class="mode-badge mode-demo">🟠 演示模式 · 内置示例</div>', unsafe_allow_html=True)
+
     with st.sidebar:
         st.markdown("### 🎯 荐股设置")
         industry = st.selectbox("选择目标行业", list(STOCKS.keys()))
@@ -1301,22 +1335,27 @@ def page_screen():
         run = st.button("🚀 开始智能筛选", use_container_width=True, type="primary")
 
     feat = INDUSTRY_FEATURE[industry]
-    st.markdown(f"**当前方案**：行业 = `{industry}` · 风险偏好 = `{risk}` · 数据源 = 东方财富实时行情（push2 报价 + 日K 技术指标） / 财务与情绪为建模特征")
+    _ds_src = "东方财富实时行情（push2 报价 + 日K 技术指标）" if _use_real else "内置示例行情（演示模式）"
+    st.markdown(f"**当前方案**：行业 = `{industry}` · 风险偏好 = `{risk}` · 数据源 = {_ds_src} / 财务与情绪为建模特征")
 
     if run:
         pool = CANDIDATES[industry]
         all_codes = sorted({c["code"] for c in pool} | {s["code"] for s in STOCKS[industry]})
 
-        # 📡 实时行情接入（东方财富 push2；网络失败则回退内置演示数据）
-        with st.status("📡 **实时行情获取** · 拉取东方财富实时报价与日K…", expanded=True) as s:
-            rt = fetch_realtime(all_codes)
-            klines = {code: fetch_kline(code, 120) for code in all_codes}
-            ok = sum(1 for c in all_codes if c in rt)
-            if ok:
-                st.success(f"✅ 已获取 {ok}/{len(all_codes)} 只标的实时行情（最新价 / 涨跌幅 / 总市值），技术面（MA/MACD）由真实日K计算。")
-            else:
-                st.warning("⚠️ 实时行情获取失败（网络受限，常见于境外部署节点），已回退至内置演示数据。")
-            s.update(label="📡 **实时行情获取** · 完成", state="complete")
+        # 📡 实时行情接入（仅真实模式拉取；演示模式使用内置示例数据）
+        if _use_real:
+            with st.status("📡 **实时行情获取** · 拉取东方财富实时报价与日K…", expanded=True) as s:
+                rt = fetch_realtime(all_codes)
+                klines = {code: fetch_kline(code, 120) for code in all_codes}
+                ok = sum(1 for c in all_codes if c in rt)
+                if ok:
+                    st.success(f"✅ 已获取 {ok}/{len(all_codes)} 只标的实时行情（最新价 / 涨跌幅 / 总市值），技术面（MA/MACD）由真实日K计算。")
+                else:
+                    st.warning("⚠️ 实时行情获取失败（网络受限，常见于境外部署节点），已回退至内置演示数据。")
+                s.update(label="📡 **实时行情获取** · 完成", state="complete")
+        else:
+            rt, klines = {}, {}
+            st.info("🟠 演示模式：使用内置示例行情与评分，未调用外部接口。")
 
         with st.status("🧭 **Screen Agent** · 正在解析投资意图…", expanded=True) as s:
             time.sleep(0.7)
@@ -1405,15 +1444,16 @@ def page_screen():
             st.caption("评分 Prompt：You are a senior equity analyst. 综合基本面 / 技术面 / 情绪面 / 行业面四维特征，0-100 打分")
             s.update(label="⚖️ **LLM 综合评分** · Top-3 标的已锁定", state="complete")
 
-        # 🤖 真实调用 DeepSeek 生成分析师观点与推荐理由（无 Key / 异常时回退内置示例）
-        with st.status("🤖 **DeepSeek 实时推理** · 生成分析师观点与推荐理由…", expanded=True) as s:
-            analyst_view = _screen_analyst_view(industry, risk, feat, pool)
-            reasons = [_screen_reason(stk, industry, risk) for stk in STOCKS[industry]]
-            s.update(label="🤖 **DeepSeek 实时推理** · 观点与理由已生成", state="complete")
+        # 🤖 调用 DeepSeek 生成分析师观点与推荐理由（演示模式 / 无 Key / 异常时回退内置示例）
+        _ds_label = "🤖 **DeepSeek 实时推理**" if _use_real else "🤖 **演示模式**"
+        with st.status(f"{_ds_label} · 生成分析师观点与推荐理由…", expanded=True) as s:
+            analyst_view = _screen_analyst_view(industry, risk, feat, pool, allow_real=_use_real)
+            reasons = [_screen_reason(stk, industry, risk, allow_real=_use_real) for stk in STOCKS[industry]]
+            s.update(label=f"{_ds_label} · 观点与理由已生成", state="complete")
 
         st.info(f"**分析师观点**：{analyst_view}")
 
-        st.caption("💡 上方分析师观点与下方各股推荐理由由 DeepSeek 实时推理生成（无 Key / 异常时回退内置示例）。")
+        st.caption("💡 上方分析师观点与下方各股推荐理由：🟢 真实模式调用 DeepSeek 实时推理，🟠 演示模式使用内置示例（或无 Key / 异常时回退）。")
 
         st.markdown("#### 🏆 推荐组合（Top-3）· 已生成推荐解释")
         cols = st.columns(3)
@@ -1440,7 +1480,8 @@ def page_screen():
                 st.plotly_chart(price_chart(df, stk["name"]), use_container_width=True)
                 with st.expander("📌 推荐理由（分析师视角）"):
                     st.write(reasons[idx])
-        st.caption("💡 侧边栏可切换行业与风险偏好；价格 / 涨跌幅 / 总市值 / 走势来自东方财富实时行情，PE/PB 与财务情绪特征为建模演示。")
+        _rt_note = "东方财富实时行情" if _use_real else "内置示例行情（演示模式）"
+        st.caption(f"💡 侧边栏可切换行业与风险偏好；价格 / 涨跌幅 / 总市值 / 走势来自{_rt_note}，PE/PB 与财务情绪特征为建模演示。")
     else:
         st.markdown('<div class="sec-title">Screen 完整流程</div><div class="sec-sub">用户偏好 → 条件解析 → 股票池构建 → 多维评分 → 排序筛选 → 输出推荐</div>', unsafe_allow_html=True)
         c1, c2 = st.columns(2)
