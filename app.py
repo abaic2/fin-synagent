@@ -1034,15 +1034,13 @@ def page_consult():
         elif "ds_api_key" in st.session_state:
             del st.session_state["ds_api_key"]
 
-        # 显示 / 复制 辅助：仅回显「本次会话已输入」的 key，不向陌生访客泄露
-        _cur_key = (st.session_state.get("ds_api_key", "") or "").strip()
+        # 显示 / 复制 辅助：当前可用的 key（界面输入优先于 secrets），直接回显以便复制
+        _cur_key = (st.session_state.get("ds_api_key", "") or "").strip() or (st.secrets.get("DEEPSEEK_API_KEY", "") or "").strip()
         if _cur_key:
-            _show = st.checkbox("👁 显示已输入的 Key（便于复制）", key="ds_show_key", value=False)
-            if _show:
-                st.code(_cur_key, language="text")
-                st.caption("↑ 点击代码块右上角的复制按钮即可复制。")
+            st.code(_cur_key, language="text")
+            st.caption("⚠️ 此 Key 在当前页面直接可见。若该应用部署在公开网址，任何访客都能看到——请勿在公开环境展示真实 Key。复制请点代码块右上角按钮。")
         else:
-            st.caption("提示：在上方粘贴 Key 后，可勾选「显示」一键复制。")
+            st.caption("提示：在上方粘贴 Key 后，这里会直接显示以便复制。")
 
     # 运行模式切换：真实模式（DeepSeek 实时推理）/ 演示模式（内置示例），可在界面手动切换
     _ds_cfg = bool((st.session_state.get("ds_api_key", "") or "").strip() or (st.secrets.get("DEEPSEEK_API_KEY", "") or "").strip())
