@@ -1775,13 +1775,23 @@ NAV_GROUPS = [
     ("附录参考", ["专有名词解释", "面试建议"], ["book", "chat-dots"]),
 ]
 
-def _select_nav(page):
-    st.session_state["nav"] = page
+def _on_nav_change(key):
+    """侧边栏某个分组的 option_menu 被点击时触发（Streamlit 在 rerun 前调用，
+    此时其它分组的 widget 尚未实例化，可安全重置它们的 key，避免双高亮/直接写 widget key 报错）。"""
+    _sel = st.session_state[key]
+    st.session_state["nav"] = _sel
     for _t, _o, _i in NAV_GROUPS:
-        _v = page if page in _o else _o[0]
-        st.session_state["nav_" + _t] = _v
-        # 同步刷新影子键，避免其它分组被重置后与「上一轮」不一致而误触发跳转
-        st.session_state["_navprev_" + _t] = _v
+        _k = "nav_" + _t
+        if _k != key:
+            st.session_state[_k] = _sel if _sel in _o else _o[0]
+
+
+def _select_nav(page):
+    """编程式跳转（首页卡片/按钮等）：只改 nav 并标记待同步，严禁直接写 widget key，
+    否则会在 widget 已实例化后触发 StreamlitWidgetAlreadyInstantiatedError。"""
+    st.session_state["nav"] = page
+    st.session_state["_nav_pending"] = True
+    st.session_state["_nav_pending_page"] = page
 
 PAGES = {
     "首页": page_home,
@@ -1803,6 +1813,17 @@ with st.sidebar:
     """, unsafe_allow_html=True)
     if "nav" not in st.session_state:
         st.session_state["nav"] = "首页"
+    # 首轮：初始化各分组 widget key（此时 widget 尚未实例化，直接赋值安全）
+    for _t, _o, _i in NAV_GROUPS:
+        _k = "nav_" + _t
+        if _k not in st.session_state:
+            st.session_state[_k] = st.session_state["nav"] if st.session_state["nav"] in _o else _o[0]
+    # 编程式跳转的同步：必须在 widget 实例化之前重置各分组 key，避免双高亮与直接写 widget key 报错
+    if st.session_state.get("_nav_pending"):
+        _p = st.session_state.get("_nav_pending_page")
+        for _t, _o, _i in NAV_GROUPS:
+            st.session_state["nav_" + _t] = _p if _p in _o else _o[0]
+        st.session_state["_nav_pending"] = False
     SB_STYLES = {
         "container": {
             "padding": "10px 8px", "background-color": "#0E2450",
@@ -1828,22 +1849,13 @@ with st.sidebar:
             "border-left": "4px solid #E8C766",
         },
     }
-    # 点击检测：Streamlit 在「用户点击后、脚本 rerun 前」已把新值写入 session_state[_key]，
-    # 因此脚本顶部快照到的已是新值，无法与当前值比较。故用独立影子键 _navprev_<分组> 记录「上一轮结束时」的选中值，
-    # 与本轮 widget 实际返回/当前值比较，不等即说明该分组被点击 -> 跳转。
+    # 每个分组一个 option_menu；点击经 on_change 派发，避免在 widget 已实例化后直接写其 key 报错
     for _title, _opts, _icons in NAV_GROUPS:
         _key = "nav_" + _title
-        _prev_key = "_navprev_" + _title
-        if _key not in st.session_state:
-            _v0 = st.session_state["nav"] if st.session_state["nav"] in _opts else _opts[0]
-            st.session_state[_key] = _v0
-            st.session_state[_prev_key] = _v0
-        _sel = option_menu(menu_title=_title, options=_opts, icons=_icons,
-                          default_index=_opts.index(st.session_state[_key]), key=_key, styles=SB_STYLES)
-        if _sel != st.session_state[_prev_key]:
-            st.session_state[_prev_key] = _sel
-            _select_nav(_sel)
-            st.rerun()
+        _default = _opts.index(st.session_state["nav"]) if st.session_state["nav"] in _opts else 0
+        option_menu(menu_title=_title, options=_opts, icons=_icons,
+                    default_index=_default, key=_key, styles=SB_STYLES,
+                    on_change=_on_nav_change)
     st.markdown("---")
     st.caption("富国开贸团队 · 演示 Demo v2")
     st.caption("⚠️ 数据为模拟数据，不构成投资建议")
