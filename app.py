@@ -902,6 +902,7 @@ def price_chart(df: pd.DataFrame, name: str):
 # 数据源：东方财富 push2 实时报价 + push2his 日K。纯标准库 urllib，无需额外依赖；
 # 网络受限时所有函数安全回退（返回空 / None），由调用方落到内置演示数据。
 import urllib.request as _ur
+import urllib.parse as _up
 
 _EM_HEADERS = {"User-Agent": "Mozilla/5.0", "Referer": "https://quote.eastmoney.com/"}
 
@@ -1670,10 +1671,42 @@ def _guba_em_comments(num_code: str, n: int = 5, name: str = ""):
         return []
 
 
+def _gnews_keyword(name: str, n: int = 5):
+    """Google News RSS 按个股名称关键词搜索（全球可达，境外部署节点的主力回退源）。
+    返回 [{title, source, date, url}]，每条都因精确命中该股名称关键词而与标的强相关。"""
+    if not name:
+        return []
+    try:
+        q = _up.quote(f'"{name}"')  # 精确短语，保证标题与该股直接相关
+        url = (f"https://news.google.com/rss/search?q={q}"
+               f"&hl=zh-CN&gl=CN&ceid=CN:zh-Hans")
+        req = _ur.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+        with _ur.urlopen(req, timeout=8) as r:
+            xml = r.read().decode("utf-8", "ignore")
+        items = re.findall(r"<item><title>(.*?)</title>.*?<pubDate>(.*?)</pubDate>", xml, re.S)
+        out = []
+        for t, d in items:
+            t = re.sub(r"\s+", " ", t).strip()
+            if not t:
+                continue
+            try:
+                dt = datetime.datetime.strptime(d[:16].strip(), "%a, %d %b %Y").strftime("%Y-%m-%d")
+            except Exception:
+                dt = ""
+            out.append({"title": t, "abstract": "", "source": "Google News·关键词命中",
+                        "date": dt, "url": "", "hot": "—"})
+            if len(out) >= n:
+                break
+        return out
+    except Exception:
+        return []
+
+
 def fetch_stock_comments(code: str, name: str = "", n: int = 5):
     """通过个股关键字（股票代码→股吧）爬取该标的的真实散户评论/讨论。
     返回 [{title, abstract, source, date, url, hot}]，内容与传入的 code 严格对应，
-    绝不混入无关标的的内容。爬取对象不限于单一站点（东财股吧 → 新浪个股资讯 → 东财公告）。"""
+    绝不混入无关标的的内容。爬取对象不限于单一站点
+    （东财股吧 → 新浪个股资讯 → Google News 关键词 → 东财公告）。"""
     H = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     try:
         num, mkt = code.split(".")
@@ -1701,12 +1734,17 @@ def fetch_stock_comments(code: str, name: str = "", n: int = 5):
             for dm, href, title in re.findall(pattern, ul, re.S):
                 title = re.sub(r"<[^>]+>", "", title).strip()
                 if title:
-                    out.append({"title": title, "source": "新浪·个股资讯", "date": dm, "url": href})
+                    out.append({"title": title, "abstract": "", "source": "新浪·个股资讯",
+                                "date": dm, "url": href, "hot": "—"})
             if out:
                 return out[:n]
     except Exception:
         pass
-    # 回退源 2：东方财富个股公告（按股票代码精确过滤）
+    # 回退源 2：Google News 按个股名称关键词搜索（全球可达，境外部署节点的主力回退）
+    out = _gnews_keyword(name, n)
+    if out:
+        return out
+    # 回退源 3：东方财富个股公告（按股票代码精确过滤）
     try:
         emc = _em_code(code)
         url = (f"https://np-anotice-stock.eastmoney.com/api/security/ann?srctype=share&ann_type=2"
@@ -1862,7 +1900,9 @@ def page_screen():
                         except Exception:
                             stock_news[c["code"]] = []
                 _nn = sum(len(v) for v in stock_news.values())
-                snews.update(label=f"🌐 **个股评论抓取** · 完成（共 {_nn} 条，已绑定到对应标的）", state="complete")
+                snews.update(label=(f"🌐 **个股评论抓取** · 完成（共 {_nn} 条，已绑定到对应标的）" if _nn
+                                    else "🌐 **个股评论抓取** · 0 条（股吧/新浪/Google News 多源均未取到，常见于网络受限）"),
+                             state="complete")
 
         with st.status("🧬 **多维特征提取** · 基本面 / 技术面 / 情绪面 / 行业面 → 特征合成…", expanded=True) as s:
             time.sleep(0.9)
@@ -1975,7 +2015,7 @@ def page_screen():
                                 f"<tbody>{_nrows}</tbody></table>",
                                 unsafe_allow_html=True)
                             st.caption("↑ 每条评论均标注所属标的，按个股代码（关键字）进入该股票的股吧实时爬取真实散户讨论，"
-                                       "并校验股吧归属，绝不混入无关标的（主源：东方财富股吧；回退：新浪个股资讯 / 东财公告）。"
+                                       "并校验股吧归属，绝不混入无关标的（主源：东方财富股吧；回退：新浪个股资讯 → Google News 关键词 → 东财公告）。"
                                        + (" 情绪由金融词库 + DeepSeek 标注。" if _use_real else " 情绪由金融词库标注。"))
                         else:
                             st.info("⚠️ 实时评论抓取失败（网络受限，常见于境外部署节点），已略过；个股情绪解读不受影响。")
