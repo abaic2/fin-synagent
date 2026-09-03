@@ -1778,7 +1778,10 @@ NAV_GROUPS = [
 def _select_nav(page):
     st.session_state["nav"] = page
     for _t, _o, _i in NAV_GROUPS:
-        st.session_state["nav_" + _t] = page if page in _o else _o[0]
+        _v = page if page in _o else _o[0]
+        st.session_state["nav_" + _t] = _v
+        # 同步刷新影子键，避免其它分组被重置后与「上一轮」不一致而误触发跳转
+        st.session_state["_navprev_" + _t] = _v
 
 PAGES = {
     "首页": page_home,
@@ -1825,16 +1828,20 @@ with st.sidebar:
             "border-left": "4px solid #E8C766",
         },
     }
-    # 快照「上一轮」各分组选中值，用于 Detect 本轮点击（option_menu 会把新值同步进 session_state[_key]，
-    # 若直接拿 _sel 与 session_state[_key] 比较永远相等，跳转逻辑永不触发）
-    _prev_nav = {_t: st.session_state.get("nav_" + _t) for _t, _o, _i in NAV_GROUPS}
+    # 点击检测：Streamlit 在「用户点击后、脚本 rerun 前」已把新值写入 session_state[_key]，
+    # 因此脚本顶部快照到的已是新值，无法与当前值比较。故用独立影子键 _navprev_<分组> 记录「上一轮结束时」的选中值，
+    # 与本轮 widget 实际返回/当前值比较，不等即说明该分组被点击 -> 跳转。
     for _title, _opts, _icons in NAV_GROUPS:
         _key = "nav_" + _title
+        _prev_key = "_navprev_" + _title
         if _key not in st.session_state:
-            st.session_state[_key] = st.session_state["nav"] if st.session_state["nav"] in _opts else _opts[0]
+            _v0 = st.session_state["nav"] if st.session_state["nav"] in _opts else _opts[0]
+            st.session_state[_key] = _v0
+            st.session_state[_prev_key] = _v0
         _sel = option_menu(menu_title=_title, options=_opts, icons=_icons,
                           default_index=_opts.index(st.session_state[_key]), key=_key, styles=SB_STYLES)
-        if _prev_nav.get(_title) is not None and _sel != _prev_nav[_title]:
+        if _sel != st.session_state[_prev_key]:
+            st.session_state[_prev_key] = _sel
             _select_nav(_sel)
             st.rerun()
     st.markdown("---")
