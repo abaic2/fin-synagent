@@ -1499,10 +1499,13 @@ def _screen_sentiment(pool, industry, risk, rt, klines, allow_real=True):
             chg = c.get("chg")
         trend = (tech or {}).get("trend") or c.get("trend")
         macd = (tech or {}).get("macd") or c.get("macd")
+        # 安全取值：真实行情 info 优先，缺字段时回退内置 CANDIDATES 数据（演示模式保留）
+        _price = info.get("price") if (info and info.get("price") is not None) else c.get("price")
+        _pe = info.get("pe") if (info and info.get("pe") is not None) else c.get("pe")
         feats[c["code"]] = {
             "name": c["name"], "code": c["code"],
-            "price": info.get("price", c["price"]), "chg": chg,
-            "pe": info.get("pe", c["pe"]), "roe": c.get("roe"),
+            "price": _price, "chg": chg,
+            "pe": _pe, "roe": c.get("roe"),
             "trend": trend, "macd": macd,
         }
     if allow_real:
