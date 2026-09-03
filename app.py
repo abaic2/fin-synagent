@@ -325,6 +325,10 @@ STOCKS = {
          "reason": "普五批价企稳回升，公司控量挺价策略执行坚决；1618、低度系列放量贡献增量；估值处于近五年低位，安全边际充足，弹性空间大。"},
         {"name": "泸州老窖", "code": "000568.SZ", "price": 156.40, "chg": -0.62, "pe": 15.2, "mv": "2302亿",
          "reason": "国窖1573稳居高端第三极，腰部产品特曲、窖龄酒复苏明确；费用管控精细化，净利率仍有上行空间；短期受行业去库存扰动，回调即配置机会。"},
+        {"name": "山西汾酒", "code": "600809.SH", "price": 198.60, "chg": +0.71, "pe": 19.6, "mv": "2431亿",
+         "reason": "青花汾酒全国化扩张成效显著，长江以南市场增速亮眼；青花20/30放量带动产品结构升级，省外收入占比持续提升；清香型龙头受益消费多元化，成长性居板块前列。"},
+        {"name": "洋河股份", "code": "002304.SZ", "price": 92.30, "chg": -0.45, "pe": 13.9, "mv": "1390亿",
+         "reason": "梦之蓝M6+/M3水晶版完成渠道梳理，库存去化接近尾声；海之蓝基本盘稳固，省内深耕+省外恢复；估值处历史低位，静待需求回暖后的业绩弹性释放。"},
     ],
     "红利": [
         {"name": "中国神华", "code": "601088.SH", "price": 41.72, "chg": +1.24, "pe": 12.6, "mv": "8288亿",
@@ -333,6 +337,10 @@ STOCKS = {
          "reason": "全球最大水电上市公司，六库联调提升发电效率，来水偏丰叠加电价市场化改革；类债属性突出，分红承诺 70% 以上，确定性极强。"},
         {"name": "工商银行", "code": "601398.SH", "price": 6.18, "chg": -0.16, "pe": 6.1, "mv": "2.20万亿",
          "reason": "国有大行龙头，资产质量稳健，不良率持续下行；股息率超 5%，险资与被动资金持续增配，受益于中特估与市值管理政策。"},
+        {"name": "陕西煤业", "code": "601225.SH", "price": 23.10, "chg": +0.52, "pe": 11.4, "mv": "2238亿",
+         "reason": "陕北优质动力煤田成本低、储量丰，长协占比高保障盈利稳定；高分红承诺（分红率不低于60%）叠加现金流充沛，是红利资产中弹性与防御兼备的品种。"},
+        {"name": "宁沪高速", "code": "600377.SH", "price": 13.85, "chg": +0.22, "pe": 12.8, "mv": "698亿",
+         "reason": "长三角核心路产车流量稳健，沪宁高速通行费收入韧性强；持续高分红（股息率超5%），类债属性突出，弱市下防御价值显著，兼具REITs化资产盘活预期。"},
     ],
     "贵金属": [
         {"name": "紫金矿业", "code": "601899.SH", "price": 18.64, "chg": +2.31, "pe": 16.9, "mv": "4926亿",
@@ -341,6 +349,10 @@ STOCKS = {
          "reason": "纯正黄金标的，金价上行期业绩弹性最大；西岭金矿探矿权注入预期强化资源储备；避险需求与央行购金构成中长期支撑。"},
         {"name": "中金黄金", "code": "600489.SH", "price": 14.52, "chg": -0.88, "pe": 22.7, "mv": "703亿",
          "reason": "央企背景，纱岭金矿投产在即带来产量跃升；集团资产注入预期明确；短期跟随板块回调，估值修复空间可观。"},
+        {"name": "赤峰黄金", "code": "600988.SH", "price": 24.63, "chg": +1.42, "pe": 25.4, "mv": "410亿",
+         "reason": "海外矿山（万象、Sepon）黄金产量进入释放期，黄金资源量持续增长；金价高位运行直接抬升业绩弹性，叠加降本增效，盈利对金价的敏感度在板块内居前。"},
+        {"name": "银泰黄金", "code": "000975.SZ", "price": 17.05, "chg": -0.63, "pe": 20.8, "mv": "473亿",
+         "reason": "黑河银泰、玉龙矿业等优质金银矿山贡献高品位资源；虽短期技术面偏弱，但金价中长期上行趋势下，具备资源增储与产量爬坡带来的修复弹性。"},
     ],
 }
 
@@ -374,6 +386,18 @@ CANDIDATES = {
         {"name": "洋河股份", "code": "002304.SZ", "pe": 13.9, "pb": 2.9, "roe": 20.4, "rev": 6.7,
          "trend": "弱势整理", "ma": "MA20 < MA60", "vol": "中波动", "macd": "死叉",
          "sent": (0.52, 0.22, 0.26), "score": 80.1},
+        {"name": "古井贡酒", "code": "000596.SZ", "pe": 18.3, "pb": 4.0, "roe": 23.1, "rev": 18.6,
+         "trend": "震荡向上", "ma": "MA20 > MA60", "vol": "中波动", "macd": "金叉",
+         "sent": (0.66, 0.13, 0.21), "score": 83.4},
+        {"name": "今世缘", "code": "603369.SH", "pe": 20.1, "pb": 4.6, "roe": 22.4, "rev": 22.3,
+         "trend": "上升趋势", "ma": "MA20 > MA60", "vol": "中波动", "macd": "金叉",
+         "sent": (0.69, 0.12, 0.19), "score": 84.0},
+        {"name": "舍得酒业", "code": "600702.SH", "pe": 14.7, "pb": 3.1, "roe": 19.8, "rev": 9.4,
+         "trend": "横盘整理", "ma": "MA20 ≈ MA60", "vol": "高波动", "macd": "粘合",
+         "sent": (0.55, 0.18, 0.27), "score": 79.6},
+        {"name": "迎驾贡酒", "code": "603198.SH", "pe": 16.2, "pb": 3.6, "roe": 21.0, "rev": 19.2,
+         "trend": "震荡向上", "ma": "MA20 > MA60", "vol": "中波动", "macd": "金叉",
+         "sent": (0.63, 0.16, 0.21), "score": 82.1},
     ],
     "红利": [
         {"name": "中国神华", "code": "601088.SH", "pe": 12.6, "pb": 1.9, "roe": 15.2, "rev": 3.1,
@@ -391,6 +415,18 @@ CANDIDATES = {
         {"name": "宁沪高速", "code": "600377.SH", "pe": 12.8, "pb": 1.6, "roe": 12.4, "rev": 5.6,
          "trend": "横盘整理", "ma": "MA20 ≈ MA60", "vol": "低波动", "macd": "粘合",
          "sent": (0.55, 0.18, 0.27), "score": 81.2},
+        {"name": "大秦铁路", "code": "601006.SH", "pe": 8.9, "pb": 0.9, "roe": 9.8, "rev": 2.4,
+         "trend": "震荡向上", "ma": "MA20 > MA60", "vol": "低波动", "macd": "金叉",
+         "sent": (0.62, 0.15, 0.23), "score": 82.7},
+        {"name": "华能水电", "code": "600025.SH", "pe": 19.8, "pb": 2.7, "roe": 13.6, "rev": 7.1,
+         "trend": "上升趋势", "ma": "MA20 > MA60", "vol": "低波动", "macd": "金叉",
+         "sent": (0.64, 0.14, 0.22), "score": 83.0},
+        {"name": "中国移动", "code": "600941.SH", "pe": 17.2, "pb": 1.8, "roe": 10.2, "rev": 6.3,
+         "trend": "震荡向上", "ma": "MA20 > MA60", "vol": "低波动", "macd": "金叉",
+         "sent": (0.61, 0.15, 0.24), "score": 84.2},
+        {"name": "中国海油", "code": "600938.SH", "pe": 9.6, "pb": 1.7, "roe": 18.9, "rev": 4.7,
+         "trend": "横盘整理", "ma": "MA20 ≈ MA60", "vol": "低波动", "macd": "粘合",
+         "sent": (0.58, 0.16, 0.26), "score": 83.5},
     ],
     "贵金属": [
         {"name": "紫金矿业", "code": "601899.SH", "pe": 16.9, "pb": 3.8, "roe": 22.6, "rev": 18.3,
@@ -408,6 +444,18 @@ CANDIDATES = {
         {"name": "银泰黄金", "code": "000975.SZ", "pe": 20.8, "pb": 2.4, "roe": 11.6, "rev": 9.8,
          "trend": "弱势整理", "ma": "MA20 < MA60", "vol": "中波动", "macd": "死叉",
          "sent": (0.54, 0.20, 0.26), "score": 80.4},
+        {"name": "湖南黄金", "code": "002155.SZ", "pe": 24.1, "pb": 2.9, "roe": 12.1, "rev": 14.2,
+         "trend": "震荡向上", "ma": "MA20 > MA60", "vol": "中波动", "macd": "金叉",
+         "sent": (0.66, 0.14, 0.20), "score": 83.3},
+        {"name": "中金岭南", "code": "000060.SZ", "pe": 13.8, "pb": 1.4, "roe": 9.7, "rev": 8.9,
+         "trend": "横盘整理", "ma": "MA20 ≈ MA60", "vol": "中波动", "macd": "粘合",
+         "sent": (0.57, 0.17, 0.26), "score": 79.9},
+        {"name": "铜陵有色", "code": "000630.SZ", "pe": 15.2, "pb": 1.3, "roe": 8.9, "rev": 10.4,
+         "trend": "横盘整理", "ma": "MA20 ≈ MA60", "vol": "高波动", "macd": "粘合",
+         "sent": (0.56, 0.18, 0.26), "score": 78.8},
+        {"name": "洛阳钼业", "code": "603993.SH", "pe": 16.1, "pb": 2.2, "roe": 15.4, "rev": 19.8,
+         "trend": "上升趋势", "ma": "MA20 > MA60", "vol": "中波动", "macd": "金叉",
+         "sent": (0.70, 0.12, 0.18), "score": 85.6},
     ],
 }
 
@@ -1485,10 +1533,11 @@ def _heuristic_sentiment(f: dict):
             "sent_tuple": _to_sent_tuple(label, score)}
 
 
-def _screen_sentiment(pool, industry, risk, rt, klines, allow_real=True):
+def _screen_sentiment(pool, industry, risk, rt, klines, allow_real=True, news=None):
     """为候选池每只股票生成情绪面解读（标签+置信度+摘要+三分类元组）。
-    真实模式：1 次 DeepSeek 批量调用，基于真实行情/技术面特征生成；
-    演示/无 Key：基于真实特征的规则启发式。返回 {code: {label, score, summary, sent_tuple}}。"""
+    真实模式：1 次 DeepSeek 批量调用，基于真实行情/技术面特征 + 该标的近期相关新闻生成；
+    演示/无 Key：基于真实特征的规则启发式。news 为 {code: [标题,...]} 与该标的严格对应。
+    返回 {code: {label, score, summary, sent_tuple}}。"""
     feats = {}
     for c in pool:
         info = (rt or {}).get(c["code"], {}) if rt else {}
@@ -1502,20 +1551,24 @@ def _screen_sentiment(pool, industry, risk, rt, klines, allow_real=True):
         # 安全取值：真实行情 info 优先，缺字段时回退内置 CANDIDATES 数据（演示模式保留）
         _price = info.get("price") if (info and info.get("price") is not None) else c.get("price")
         _pe = info.get("pe") if (info and info.get("pe") is not None) else c.get("pe")
+        _news = (news or {}).get(c["code"], [])[:5] if news else []
         feats[c["code"]] = {
             "name": c["name"], "code": c["code"],
             "price": _price, "chg": chg,
             "pe": _pe, "roe": c.get("roe"),
             "trend": trend, "macd": macd,
+            "news": _news,
         }
     if allow_real:
         fb = {code: _heuristic_sentiment(f) for code, f in feats.items()}
         fb_json = json.dumps({k: {"label": v["label"], "score": v["score"], "summary": v["summary"]}
                               for k, v in fb.items()}, ensure_ascii=False)
-        sys_p = ("你是金融情绪分析专家。基于给定 A 股标的的真实行情与技术面特征，判断其当前市场情绪"
-                 "（正面/中性/负面），给出 0-1 置信度，并用 1 句话说明依据（结合涨跌幅、趋势、MACD）。"
+        sys_p = ("你是金融情绪分析专家。基于给定 A 股标的的真实行情、技术面特征，以及该标的近期相关新闻标题，"
+                 "判断其当前市场情绪（正面/中性/负面），给出 0-1 置信度，并用 1 句话说明依据"
+                 "（结合涨跌幅、趋势、MACD，若有相关新闻则结合新闻）。"
                  "只输出 JSON，格式：{\"600519\":{\"label\":\"正面\",\"score\":0.82,\"summary\":\"...\"}}，不要多余文字。")
-        user_p = "行业：" + industry + "；风险偏好：" + risk + "。特征：" + json.dumps(feats, ensure_ascii=False)
+        user_p = ("行业：" + industry + "；风险偏好：" + risk + "。特征（含各标的 news 字段为该股近期相关新闻标题）："
+                  + json.dumps(feats, ensure_ascii=False))
         try:
             parsed = json.loads(_ds_text(sys_p, user_p, fb_json, allow_real=True))
             out = {}
@@ -1578,6 +1631,62 @@ def fetch_market_news(n: int = 10):
         return out[:n]
     except Exception:
         return []
+
+
+def _em_code(code: str):
+    """600519.SH -> SH600519；000858.SZ -> SZ000858（东方财富个股资讯接口用）。"""
+    try:
+        num, mkt = code.split(".")
+        return ("SH" if mkt.upper() == "SH" else "SZ") + num
+    except Exception:
+        return code
+
+
+def fetch_stock_news(code: str, n: int = 5):
+    """抓取单只股票的真实相关资讯（东方财富个股公告优先，回退个股新闻），返回 [{title, source, date}]。
+    内容与传入的 code 严格对应，避免与无关标的混淆。"""
+    H = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+         "Referer": "https://quote.eastmoney.com/"}
+    emc = _em_code(code)
+    # 主源：东方财富个股公告（按股票代码精确过滤）
+    try:
+        url = (f"https://np-anotice-stock.eastmoney.com/api/security/ann?srctype=share&ann_type=2"
+               f"&client_source=web&stock_list={emc}&page_index=1&page_size={n}")
+        req = _ur.Request(url, headers=H)
+        with _ur.urlopen(req, timeout=4) as r:
+            d = json.loads(r.read().decode("utf-8"))
+        lst = (d.get("data") or {}).get("list") or []
+        out = []
+        for it in lst:
+            t = it.get("title") or it.get("title_cn") or ""
+            if not t:
+                continue
+            out.append({"title": t, "source": "东方财富·个股公告",
+                        "date": (it.get("notice_date") or it.get("eitime") or "")[:10]})
+        if out:
+            return out[:n]
+    except Exception:
+        pass
+    # 回退源：东方财富个股新闻
+    try:
+        url = (f"https://np-listapi.eastmoney.com/comm/web/getNewsByCode?code={emc[2:]}"
+               f"&pageSize={n}&pageIndex=1&type=1&fields=code,title,date,from")
+        req = _ur.Request(url, headers=H)
+        with _ur.urlopen(req, timeout=4) as r:
+            d = json.loads(r.read().decode("utf-8"))
+        lst = (d.get("data") or {}).get("list") or []
+        out = []
+        for it in lst:
+            t = it.get("title") or ""
+            if not t:
+                continue
+            out.append({"title": t, "source": it.get("from") or "东方财富",
+                        "date": (it.get("date") or "")[:10]})
+        if out:
+            return out[:n]
+    except Exception:
+        pass
+    return []
 
 
 def _label_news(texts, allow_real=True):
@@ -1689,10 +1798,23 @@ def page_screen():
                          use_container_width=True, hide_index=True)
             s.update(label="🏗️ **股票池构建** · 候选池就绪", state="complete")
 
+        # 个股相关资讯（真实模式抓取，按 code 精确对应；演示模式不抓取）
+        stock_news = {}
+        if _use_real:
+            with st.status("🌐 **个股相关资讯抓取** · 按标的代码获取真实新闻/公告…", expanded=True) as snews:
+                for c in pool:
+                    try:
+                        stock_news[c["code"]] = fetch_stock_news(c["code"], 5)
+                    except Exception:
+                        stock_news[c["code"]] = []
+                _nn = sum(len(v) for v in stock_news.values())
+                snews.update(label=f"🌐 **个股相关资讯抓取** · 完成（共 {_nn} 条，已绑定到对应标的）", state="complete")
+
         with st.status("🧬 **多维特征提取** · 基本面 / 技术面 / 情绪面 / 行业面 → 特征合成…", expanded=True) as s:
             time.sleep(0.9)
-            # 情绪面：真实模式下由 DeepSeek 基于实时行情/技术面生成；演示模式用规则启发式
-            sent_res = _screen_sentiment(pool, industry, risk, rt, klines, allow_real=_use_real)
+            # 情绪面：真实模式下由 DeepSeek 基于实时行情/技术面 + 该标的近期相关新闻生成；演示模式用规则启发式
+            sent_res = _screen_sentiment(pool, industry, risk, rt, klines, allow_real=_use_real,
+                                         news=stock_news if _use_real else None)
             for c in pool:
                 c["sent"] = sent_res[c["code"]]["sent_tuple"]
             t1, t2, t3, t4 = st.tabs(["💰 基本面特征", "📈 技术面特征", "💬 情绪面特征（FinBERT）", "🏭 行业面特征"])
@@ -1748,28 +1870,61 @@ def page_screen():
                     f"<th style='padding:4px 10px;'>情绪 / 置信度</th><th style='padding:4px 10px;'>解读依据</th></tr></thead>"
                     f"<tbody>{_rows}</tbody></table>",
                     unsafe_allow_html=True)
-                st.caption("↑ 情绪研判基于实时涨跌幅、趋势、MACD 等字段" + ("，由 DeepSeek 推理生成" if _use_real else "（演示模式为规则启发式）") + "。")
-                # 实时市场资讯（真实新闻头条，非硬编码）
-                with st.expander("🌐 实时市场资讯（真实新闻头条 · 情绪标注）"):
-                    _news = fetch_market_news(10)
-                    if _news:
-                        _labels = _label_news([n["title"] for n in _news], allow_real=_use_real)
-                        _nrows = "".join(
-                            f"<tr><td style='padding:3px 8px;'>{n['title']}</td>"
-                            f"<td style='padding:3px 8px;color:#7A86A6;white-space:nowrap;'>{n['source']}</td>"
-                            f"<td style='padding:3px 8px;color:#7A86A6;white-space:nowrap;'>{n['date']}</td>"
-                            f"<td style='padding:3px 8px;font-weight:700;color:{('#E54545' if lbl=='负面' else '#C9A227' if lbl=='正面' else '#8A93A8')};white-space:nowrap;'>{lbl}</td></tr>"
-                            for n, (lbl, _) in zip(_news, _labels)
-                        )
-                        st.markdown(
-                            f"<table style='width:100%;font-size:.82rem;border-collapse:collapse;'>"
-                            f"<thead><tr style='color:#7A86A6;text-align:left;'><th style='padding:3px 8px;'>标题</th>"
-                            f"<th style='padding:3px 8px;'>来源</th><th style='padding:3px 8px;'>日期</th><th style='padding:3px 8px;'>情绪</th></tr></thead>"
-                            f"<tbody>{_nrows}</tbody></table>",
-                            unsafe_allow_html=True)
-                        st.caption("↑ 新闻来自新浪财经 / 东方财富实时接口（真实抓取，非演示），情绪由金融词库" + (" + DeepSeek 标注" if _use_real else "标注") + "。")
+                st.caption("↑ 情绪研判基于实时涨跌幅、趋势、MACD" + ("，以及该标的近期相关新闻" if _use_real else "") + "等字段" + ("，由 DeepSeek 推理生成" if _use_real else "（演示模式为规则启发式）") + "。")
+                # 个股相关资讯：实时抓取、按标的代码严格对应（解决此前"抓取评论与目标股无关"的问题）
+                with st.expander("📰 个股相关资讯（真实抓取 · 按标的分组 · 情绪标注）", expanded=False):
+                    if not _use_real:
+                        st.info("🟠 演示模式未抓取实时资讯。切换到「🟢 真实模式」后可获取各标的自身的真实新闻/公告。")
                     else:
-                        st.info("⚠️ 实时资讯拉取失败（网络受限，常见于境外部署节点），已略过；个股情绪解读不受影响。")
+                        _all_rows = []
+                        for c in pool:
+                            _nws = (stock_news or {}).get(c["code"], [])
+                            if _nws:
+                                _lbls = _label_news([n["title"] for n in _nws], allow_real=_use_real)
+                                for n, (lbl, _) in zip(_nws, _lbls):
+                                    _all_rows.append((c["name"], n["title"], n["source"], n["date"], lbl))
+                            else:
+                                _all_rows.append((c["name"], "（该标的暂无实时新闻/公告）", "—", "—", "—"))
+                        if _all_rows:
+                            _nrows = "".join(
+                                f"<tr><td style='padding:3px 8px;color:{NAVY};font-weight:600;white-space:nowrap;'>{nm}</td>"
+                                f"<td style='padding:3px 8px;'>{tt}</td>"
+                                f"<td style='padding:3px 8px;color:#7A86A6;white-space:nowrap;'>{src}</td>"
+                                f"<td style='padding:3px 8px;color:#7A86A6;white-space:nowrap;'>{dt}</td>"
+                                f"<td style='padding:3px 8px;font-weight:700;color:{('#E54545' if lbl=='负面' else '#C9A227' if lbl=='正面' else '#8A93A8')};white-space:nowrap;'>{lbl}</td></tr>"
+                                for nm, tt, src, dt, lbl in _all_rows
+                            )
+                            st.markdown(
+                                f"<table style='width:100%;font-size:.82rem;border-collapse:collapse;'>"
+                                f"<thead><tr style='color:#7A86A6;text-align:left;'>"
+                                f"<th style='padding:3px 8px;'>标的</th><th style='padding:3px 8px;'>标题（仅限该标的）</th>"
+                                f"<th style='padding:3px 8px;'>来源</th><th style='padding:3px 8px;'>日期</th>"
+                                f"<th style='padding:3px 8px;'>情绪</th></tr></thead>"
+                                f"<tbody>{_nrows}</tbody></table>",
+                                unsafe_allow_html=True)
+                            st.caption("↑ 每条资讯均标注所属标的，仅显示该标的自身的真实新闻/公告（东方财富接口按股票代码精确过滤）。"
+                                       + (" 情绪由金融词库 + DeepSeek 标注。" if _use_real else " 情绪由金融词库标注。"))
+                        else:
+                            st.info("⚠️ 实时资讯抓取失败（网络受限，常见于境外部署节点），已略过；个股情绪解读不受影响。")
+                        # 大盘要闻（市场层面，与具体个股无关，单独标注避免混淆）
+                        _mkt = fetch_market_news(8)
+                        if _mkt:
+                            with st.expander("🗞 大盘要闻（市场层面 · 非个股相关）"):
+                                _mlbls = _label_news([n["title"] for n in _mkt], allow_real=_use_real)
+                                _mrows = "".join(
+                                    f"<tr><td style='padding:3px 8px;'>{n['title']}</td>"
+                                    f"<td style='padding:3px 8px;color:#7A86A6;white-space:nowrap;'>{n['source']}</td>"
+                                    f"<td style='padding:3px 8px;color:#7A86A6;white-space:nowrap;'>{n['date']}</td>"
+                                    f"<td style='padding:3px 8px;font-weight:700;color:{('#E54545' if lbl=='负面' else '#C9A227' if lbl=='正面' else '#8A93A8')};white-space:nowrap;'>{lbl}</td></tr>"
+                                    for n, (lbl, _) in zip(_mkt, _mlbls)
+                                )
+                                st.markdown(
+                                    f"<table style='width:100%;font-size:.82rem;border-collapse:collapse;'>"
+                                    f"<thead><tr style='color:#7A86A6;text-align:left;'><th style='padding:3px 8px;'>标题</th>"
+                                    f"<th style='padding:3px 8px;'>来源</th><th style='padding:3px 8px;'>日期</th><th style='padding:3px 8px;'>情绪</th></tr></thead>"
+                                    f"<tbody>{_mrows}</tbody></table>",
+                                    unsafe_allow_html=True)
+                                st.caption("↑ 以上为市场层面宏观/行业要闻，并非针对上方具体个股，仅供参考。")
             with t4:
                 c1, c2 = st.columns(2)
                 with c1:
@@ -1835,32 +1990,35 @@ def page_screen():
 
         st.caption("💡 上方分析师观点与下方各股推荐理由：🟢 真实模式调用 DeepSeek 实时推理，🟠 演示模式使用内置示例（或无 Key / 异常时回退）。")
 
-        st.markdown("#### 🏆 推荐组合（Top-3）· 已生成推荐解释")
-        cols = st.columns(3)
-        for idx, (col, stk) in enumerate(zip(cols, STOCKS[industry])):
-            with col:
-                info = rt.get(stk["code"], {}) if rt else {}
-                price = info.get("price", stk["price"])
-                chg = info.get("chg", stk["chg"])
-                pe = info.get("pe", stk["pe"])
-                mv = _fmt_mv(info.get("mv")) if (info.get("mv") is not None) else stk["mv"]
-                chg_cls = "up" if chg >= 0 else "down"
-                sign = "+" if chg >= 0 else ""
-                st.markdown(f"""
-                <div class="stock-card">
-                  <div><span class="stock-name">{stk['name']}</span><span class="stock-code">{stk['code']}</span></div>
-                  <div style="margin:10px 0 4px 0;">
-                    <span style="font-size:1.65rem;font-weight:900;color:{NAVY};font-family:'Noto Serif SC',serif;">¥{price:.2f}</span>
-                    <span class="{chg_cls}" style="margin-left:10px;font-size:1.02rem;">{sign}{chg:.2f}%</span>
-                  </div>
-                  <div style="font-size:.82rem;color:#7A86A6;">市盈率 {pe} · 总市值 {mv}</div>
-                </div>
-                """, unsafe_allow_html=True)
-                _kl = klines.get(stk["code"]) if klines else None
-                df = _kl if _kl is not None else make_price_series(price)
-                st.plotly_chart(price_chart(df, stk["name"]), use_container_width=True)
-                with st.expander("📌 推荐理由（分析师视角）"):
-                    st.write(reasons[idx])
+        _recs = STOCKS[industry]
+        st.markdown(f"#### 🏆 推荐组合（Top-{len(_recs)}）· 已生成推荐解释")
+        for _i in range(0, len(_recs), 3):
+            cols = st.columns(3)
+            for _j, (col, stk) in enumerate(zip(cols, _recs[_i:_i + 3])):
+                idx = _i + _j
+                with col:
+                    info = rt.get(stk["code"], {}) if rt else {}
+                    price = info.get("price", stk["price"])
+                    chg = info.get("chg", stk["chg"])
+                    pe = info.get("pe", stk["pe"])
+                    mv = _fmt_mv(info.get("mv")) if (info.get("mv") is not None) else stk["mv"]
+                    chg_cls = "up" if chg >= 0 else "down"
+                    sign = "+" if chg >= 0 else ""
+                    st.markdown(f"""
+                    <div class="stock-card">
+                      <div><span class="stock-name">{stk['name']}</span><span class="stock-code">{stk['code']}</span></div>
+                      <div style="margin:10px 0 4px 0;">
+                        <span style="font-size:1.65rem;font-weight:900;color:{NAVY};font-family:'Noto Serif SC',serif;">¥{price:.2f}</span>
+                        <span class="{chg_cls}" style="margin-left:10px;font-size:1.02rem;">{sign}{chg:.2f}%</span>
+                      </div>
+                      <div style="font-size:.82rem;color:#7A86A6;">市盈率 {pe} · 总市值 {mv}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    _kl = klines.get(stk["code"]) if klines else None
+                    df = _kl if _kl is not None else make_price_series(price)
+                    st.plotly_chart(price_chart(df, stk["name"]), use_container_width=True)
+                    with st.expander("📌 推荐理由（分析师视角）"):
+                        st.write(reasons[idx])
         _rt_note = "东方财富实时行情" if _use_real else "内置示例行情（演示模式）"
         st.caption(f"💡 侧边栏可切换行业与风险偏好；价格 / 涨跌幅 / 总市值 / 走势来自{_rt_note}，PE/PB 与财务情绪特征为建模演示。")
     else:
