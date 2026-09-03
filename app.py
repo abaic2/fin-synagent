@@ -747,12 +747,6 @@ def page_home():
         if st.button("打开面试建议 →", key="go_interview", use_container_width=True, type="primary"):
             _select_nav("面试建议"); st.rerun()
 
-    st.markdown('<div class="sec-title">核心数据一览</div><div class="sec-sub">AI as Judge · AI as Customers · 人工评估三重验证</div>', unsafe_allow_html=True)
-    kpis = [("28.41", "AI 评估均分（满分30）"), ("p=0.017", "显著优于 SOTA"), ("3329", "RAG 向量片段"), ("4", "行业知识域")]
-    for col, (v, k) in zip(st.columns(4), kpis):
-        with col:
-            st.markdown(f'<div class="kpi"><div class="v">{v}</div><div class="k">{k}</div></div>', unsafe_allow_html=True)
-
     st.markdown('<div class="sec-title">版本迭代</div><div class="sec-sub">Fin 1.0 → Fin 3.0 持续进化</div>', unsafe_allow_html=True)
     st.markdown("""
     <div class="tl">
