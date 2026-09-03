@@ -1037,7 +1037,6 @@ def page_consult():
 
         # 显示 / 复制 辅助：直接在页面展示真实 Key，便于复制
         st.code(DS_FALLBACK_KEY, language="text")
-        st.caption("⚠️ 上方为当前使用的 DeepSeek API Key，已在页面直接展示。若应用部署在公开网址，任何访客都能看到——请勿在公开环境展示真实 Key，建议用完后在 platform.deepseek.com 轮换。")
 
     # 运行模式切换：真实模式（DeepSeek 实时推理）/ 演示模式（内置示例），可在界面手动切换
     _ds_cfg = bool((st.session_state.get("ds_api_key", "") or "").strip() or (st.secrets.get("DEEPSEEK_API_KEY", "") or "").strip() or DS_FALLBACK_KEY)
