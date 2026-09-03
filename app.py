@@ -699,6 +699,79 @@ def mock_spark_response(model: str, prompt: str, answer: str, temperature: float
         },
     }
 
+# ============================================================== DeepSeek 真实大模型接入
+# 通过 OpenAI 兼容协议调用 DeepSeek：https://api.deepseek.com ，默认模型 deepseek-chat (V3)
+DS_BASE_URL = "https://api.deepseek.com"
+DS_MODEL = "deepseek-chat"
+
+
+def _ds_client():
+    """读取 st.secrets 中的 DEEPSEEK_API_KEY，构造 OpenAI 客户端；缺失或异常时返回 None（降级演示模式）。"""
+    try:
+        key = st.secrets.get("DEEPSEEK_API_KEY", "")
+    except Exception:
+        key = ""
+    if not key:
+        return None
+    try:
+        from openai import OpenAI
+        return OpenAI(api_key=key, base_url=DS_BASE_URL)
+    except Exception:
+        return None
+
+
+def _ds_text(system: str, user: str, fallback: str) -> str:
+    """非流式调用 DeepSeek；缺密钥或异常时返回 fallback 文本。"""
+    client = _ds_client()
+    if client is None:
+        return fallback
+    try:
+        resp = client.chat.completions.create(
+            model=DS_MODEL,
+            messages=[{"role": "system", "content": system},
+                      {"role": "user", "content": user}],
+            temperature=0.7,
+            stream=False,
+        )
+        return (resp.choices[0].message.content or "").strip() or fallback
+    except Exception:
+        return fallback
+
+
+def _ds_stream_into(ph, system: str, user: str, fallback: str) -> str:
+    """流式调用 DeepSeek，逐块渲染到 ph（打字机效果）；缺密钥或异常时回退 fallback。"""
+    client = _ds_client()
+    if client is None:
+        ph.markdown(f'<div class="gen-box">{fallback}</div>', unsafe_allow_html=True)
+        return fallback
+    out, cnt = "", 0
+    try:
+        stream = client.chat.completions.create(
+            model=DS_MODEL,
+            messages=[{"role": "system", "content": system},
+                      {"role": "user", "content": user}],
+            temperature=0.7,
+            stream=True,
+        )
+        for chunk in stream:
+            delta = chunk.choices[0].delta.content or ""
+            if not delta:
+                continue
+            out += delta
+            cnt += len(delta)
+            if cnt >= 24:  # 每累积约 24 字刷新一次，避免过于频繁重绘
+                ph.markdown(f'<div class="gen-box">{out}<span class="cursor"></span></div>', unsafe_allow_html=True)
+                cnt = 0
+        ph.markdown(f'<div class="gen-box">{out}</div>', unsafe_allow_html=True)
+        return out or fallback
+    except Exception:
+        if out:
+            ph.markdown(f'<div class="gen-box">{out}</div>', unsafe_allow_html=True)
+            return out
+        ph.markdown(f'<div class="gen-box">{fallback}</div>', unsafe_allow_html=True)
+        return fallback
+
+
 # ============================================================== 图表
 def make_price_series(base: float, days: int = 120, drift: float = 0.0006, vol: float = 0.016):
     rng = np.random.default_rng(int(base * 100) % 2**32)
@@ -787,34 +860,41 @@ def page_home():
 # ============================================================== 页面：Consult
 def run_workflow(query: str, decomp_level: int):
     script = match_script(query)
+    rag_key = next((k for k in ["白酒", "红利", "贵金属"] if k in query), "default")
+    rag_hits = get_rag_hits(rag_key, query)
+    kb_tag = "宏观" if rag_key == "default" else rag_key
+    rag_ctx = "\n".join(f"【{h['source']} · p{h['page']}】{h['text']}" for h in rag_hits) if rag_hits else "（知识库未加载，以下为通用分析）"
+
+    ds_on = _ds_client() is not None
     st.markdown("---")
     st.markdown("##### 🔄 多智能体协同工作流（透明可观测）")
-
+    if not ds_on:
+        st.warning("⚠️ 未检测到 DEEPSEEK_API_KEY，当前为**演示模式**（内置示例回复）。在 Streamlit Cloud 的 Secrets 或本地 `.streamlit/secrets.toml` 配置密钥后，将自动切换为真实 DeepSeek 推理。")
     md = ["##### 🔄 多智能体协同工作流（透明可观测）", ""]
+    if not ds_on:
+        md.append("> ⚠️ 演示模式：未配置 DEEPSEEK_API_KEY，以下为内置示例回复。")
+        md.append("")
 
+    # 1) Leader 领导智能体：任务拆解
     with st.status("👔 **Leader 领导智能体** · 正在进行任务拆解…", expanded=True) as s:
-        time.sleep(0.9)
-        st.write(f"识别问题意图：行业咨询 / 投资建议 · 拆解粒度：**{decomp_level} 级**")
-        for i, t in enumerate(script["subtasks"], 1):
-            st.write(f"📌 子任务 {i}：{t}")
-        st.write(f"🎯 已分配专家：{'、'.join(script['experts'])}")
+        leader_fb = "\n".join(f"- 子任务：{t}" for t in script["subtasks"]) + f"\n- 分配专家：{'、'.join(script['experts'])}"
+        leader = _ds_text(
+            "你是 Fin 智能投顾系统的 Leader 领导智能体。负责把用户的投资咨询问题拆解为若干子任务并分配专家。"
+            "请只输出纯文本 Markdown 列表：每行一个「- 子任务：<名称>」，最后一行「- 分配专家：<专家名>」。不要添加额外解释。",
+            f"用户问题：{query}\n拆解粒度：{decomp_level} 级（粒度越高，子任务越细）。请给出子任务列表与分配的专家。",
+            leader_fb,
+        )
+        st.markdown(leader)
         s.update(label="👔 **Leader 领导智能体** · 任务拆解完成，可补充子任务", state="complete")
     md.append("**👔 Leader 领导智能体** · 任务拆解完成")
-    md.append(f"- 识别问题意图：行业咨询 / 投资建议 · 拆解粒度：**{decomp_level} 级**")
-    for i, t in enumerate(script["subtasks"], 1):
-        md.append(f"- 📌 子任务 {i}：{t}")
-    md.append(f"- 🎯 已分配专家：{'、'.join(script['experts'])}")
+    md.append(leader)
     md.append("")
 
     with st.expander("🙋 人机协同 · 对拆解任务进行补充（可选）"):
         st.text_input("输入您希望补充的分析方向，专家将一并考虑：", key=f"supp_{time.time()}")
 
-    # RAG 知识库检索（真实 Chroma 向量库检索结果）
-    rag_key = next((k for k in ["白酒", "红利", "贵金属"] if k in query), "default")
-    rag_hits = get_rag_hits(rag_key, query)
+    # 2) RAG 知识库检索（本地 Chroma bundle，不走 API）
     with st.status("📚 **知识库检索（RAG）** · 正在检索 Chroma 行业向量库…", expanded=True) as s:
-        time.sleep(0.6)
-        kb_tag = "宏观" if rag_key == "default" else rag_key
         st.write(f"**检索域**：`{kb_tag}` collection · **检索流程**：语义段落切分 → 中文向量化（bge 512 维）→ Chroma 持久化 → 查询向量化 → 余弦相似度 Top-K → Prompt 拼接")
         if rag_hits:
             for h in rag_hits:
@@ -822,7 +902,7 @@ def run_workflow(query: str, decomp_level: int):
                     f'<div class="src">📄 <b>{h["source"]}</b> · p{h["page"]} · 相似度 <b>{h["score"]:.3f}</b><br>'
                     f'<span style="color:#4A6A56;">{h["text"]}</span></div>', unsafe_allow_html=True)
         else:
-            st.warning("知识库 bundle 未加载，已回退至内置示例片段。")
+            st.warning("知识库 bundle 未加载，已回退至通用分析。")
         s.update(label="📚 **知识库检索（RAG）** · 命中高相关片段，已注入专家提示词", state="complete")
     md.append(f"**📚 知识库检索（RAG）** · 命中高相关片段")
     md.append(f"- 检索域：`{kb_tag}` collection · 流程：语义段落切分 → 中文向量化（bge 512 维）→ Chroma 持久化 → 查询向量化 → 余弦相似度 Top-K → Prompt 拼接")
@@ -830,56 +910,78 @@ def run_workflow(query: str, decomp_level: int):
         for h in rag_hits:
             md.append(f"- 📄 **{h['source']}** · p{h['page']} · 相似度 **{h['score']:.3f}**")
     else:
-        md.append("- ⚠️ 知识库 bundle 未加载，已回退至内置示例片段。")
+        md.append("- ⚠️ 知识库 bundle 未加载，已回退至通用分析。")
     md.append("")
 
-    with st.status("🎓 **专家智能体（Spark4.0 Ultra）** · 正在基于检索片段生成专业回答…", expanded=True) as s:
-        time.sleep(0.8)
+    # 3) 专家智能体：基于检索片段生成专业回答（流式打字机）
+    with st.status("🎓 **专家智能体（DeepSeek-Chat）** · 正在基于检索片段生成专业回答…", expanded=True) as s:
         ph = st.empty()
-        spark_stream(script["expert_answer"], ph, speed=0.006)
-        s.update(label="🎓 **专家智能体（Spark4.0 Ultra）** · 回答生成完毕", state="complete")
-    md.append("**🎓 专家智能体（Spark4.0 Ultra）** · 回答生成完毕")
-    md.append(script["expert_answer"])
+        expert = _ds_stream_into(
+            ph,
+            "你是 Fin 智能投顾系统的行业专家智能体（金融领域资深分析师）。请基于【知识库检索片段】与用户问题，输出专业、数据驱动、可追溯的投资分析。"
+            "要求：使用 Markdown，分点论述，关键结论加粗，必要时给出风险提示。语言为中文。",
+            f"用户问题：{query}\n\n【知识库检索片段】\n{rag_ctx}\n\n请基于以上信息给出专业回答。",
+            script["expert_answer"],
+        )
+        s.update(label="🎓 **专家智能体（DeepSeek-Chat）** · 回答生成完毕", state="complete")
+    md.append("**🎓 专家智能体（DeepSeek-Chat）** · 回答生成完毕")
+    md.append(expert)
     md.append("")
 
+    # 4) 评论家智能体：审查专家回答
     with st.status("🧐 **评论家智能体** · 正在审查专家回答…", expanded=True) as s:
-        time.sleep(0.8)
-        st.write(script["critic"])
+        critic = _ds_text(
+            "你是 Fin 智能投顾系统的评论家智能体。请审查专家回答，指出遗漏、逻辑漏洞、数据存疑之处，并给出改进建议。用中文 Markdown 要点输出。",
+            f"用户问题：{query}\n\n【专家回答】\n{expert}\n\n请给出批评意见与改进建议。",
+            script["critic"],
+        )
+        st.markdown(critic)
         c1, c2 = st.columns(2)
         c1.button("👍 认同批评意见", key=f"agree_{time.time()}")
         c2.button("✋ 不认同，给出反馈", key=f"disagree_{time.time()}")
         s.update(label="🧐 **评论家智能体** · 批评意见已输出", state="complete")
     md.append("**🧐 评论家智能体** · 批评意见")
-    md.append(script["critic"])
+    md.append(critic)
     md.append("")
 
+    # 5) 专家智能体：针对批评完善回答
     with st.status("✍️ **专家智能体** · 针对批评与追问完善回答…", expanded=True) as s:
-        time.sleep(0.7)
-        st.write(script["expert_revise"])
+        expert_revise = _ds_text(
+            "你是 Fin 智能投顾系统的专家智能体。请根据评论家的批评意见，完善并修订你的回答，输出修订后的完整要点。中文 Markdown。",
+            f"用户问题：{query}\n\n【原专家回答】\n{expert}\n\n【评论家意见】\n{critic}\n\n请输出完善后的回答要点。",
+            script["expert_revise"],
+        )
+        st.markdown(expert_revise)
         s.update(label="✍️ **专家智能体** · 回答已完善", state="complete")
     md.append("**✍️ 专家智能体** · 完善回答")
-    md.append(script["expert_revise"])
+    md.append(expert_revise)
     md.append("")
 
+    # 6) 搜索与求证智能体：核验真实性、列出可溯源来源
     with st.status("🔎 **搜索与求证智能体** · 正在联网检索并核验真实性…", expanded=True) as s:
-        time.sleep(0.9)
-        st.write("已检索知识库与互联网，交叉验证关键数据，未发现幻觉内容。信息源如下：")
-        for src in script["verify"]:
-            st.markdown(f'<div class="src">📄 {src}</div>', unsafe_allow_html=True)
+        verify = _ds_text(
+            "你是 Fin 智能投顾系统的搜索与求证智能体。请针对分析中的关键数据与结论，列出可溯源的信息来源（研究报告/数据/新闻），并判断是否可能存在幻觉。中文 Markdown 列表。",
+            f"用户问题：{query}\n\n【最终分析要点】\n{expert_revise}\n\n请列出信息源并核验真实性。",
+            "已检索知识库与互联网，交叉验证关键数据，未发现幻觉内容。信息源如下：\n" + "\n".join(f"- {src}" for src in script["verify"]),
+        )
+        st.markdown(verify)
         s.update(label="🔎 **搜索与求证智能体** · 验证通过 · 信息可溯源", state="complete")
     md.append("**🔎 搜索与求证智能体** · 验证通过 · 信息可溯源")
-    md.append("已检索知识库与互联网，交叉验证关键数据，未发现幻觉内容。信息源如下：")
-    for src in script["verify"]:
-        md.append(f"- 📄 {src}")
+    md.append(verify)
     md.append("")
 
+    # 7) 总结领导：汇总最终建议
     with st.status("📋 **总结领导** · 正在汇总全部信息…", expanded=True) as s:
-        time.sleep(0.6)
+        summary = _ds_text(
+            "你是 Fin 智能投顾系统的总结领导。请基于以上全流程（任务拆解、专家分析、评论家审查、修订、求证），给出最终投资建议与可执行结论。中文 Markdown，简明有力。",
+            f"用户问题：{query}\n\n【专家修订回答】\n{expert_revise}\n\n【验证信息源】\n{verify}\n\n请给出最终建议。",
+            script["summary"],
+        )
         s.update(label="📋 **总结领导** · 最终建议", state="complete")
-    st.success(script["summary"])
+    st.success(summary)
     st.caption("💡 您可以继续追问（如：现在市场看好吗？短期还是长期持有？），系统将结合上下文持续回答。")
     md.append("**📋 总结领导** · 最终建议")
-    md.append(script["summary"])
+    md.append(summary)
     md.append("")
     md.append("💡 您可以继续追问（如：现在市场看好吗？短期还是长期持有？），系统将结合上下文持续回答。")
     return "\n".join(md)

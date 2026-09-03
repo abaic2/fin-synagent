@@ -3,3 +3,4 @@ streamlit-option-menu>=0.4.0
 plotly>=5.22.0
 pandas>=2.0.0
 numpy>=1.26.0
+openai>=1.0.0
