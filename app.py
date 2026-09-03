@@ -851,7 +851,7 @@ def page_consult():
         st.session_state["chat"] = []
 
     # 居中的咨询输入框
-    _, center_col, _ = st.columns([1, 2, 1])
+    _, center_col, _ = st.columns([1, 1, 1])
     with center_col:
         if "pending_query" in st.session_state:
             st.session_state["consult_query_input"] = st.session_state.pop("pending_query")
