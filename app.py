@@ -840,11 +840,6 @@ def page_consult():
     if "chat" not in st.session_state:
         st.session_state["chat"] = []
 
-    # 上一轮提交后，于 widget 实例化之前清空输入框（规避对已实例化 widget key 直接赋值报错）
-    if st.session_state.get("_clear_query"):
-        st.session_state["consult_query_input"] = ""
-        del st.session_state["_clear_query"]
-
     # 居中的咨询面板：输入框 + 引导词 + 任务分解程度，减少两侧空白
     _, center_col, _ = st.columns([1, 2, 1])
     with center_col:
@@ -855,12 +850,14 @@ def page_consult():
                 if st.button(gp, key=f"guide_{gp}", use_container_width=True):
                     st.session_state["pending_query"] = gp
 
-        query = st.text_input(
-            "投资咨询问题",
-            placeholder="请输入您的投资咨询问题，例如：白酒行业最近行情如何？",
-            label_visibility="collapsed",
-            key="consult_query_input"
-        )
+        with st.form(key="consult_form", clear_on_submit=True):
+            query = st.text_input(
+                "投资咨询问题",
+                placeholder="请输入您的投资咨询问题，例如：白酒行业最近行情如何？",
+                label_visibility="collapsed",
+                key="consult_query_input"
+            )
+            submitted = st.form_submit_button("🚀 发送", use_container_width=True, type="primary")
 
         st.markdown("<div style='font-weight:600;color:#0D1B3E;margin:10px 0 6px 0;'>⚙️ 任务分解程度</div>", unsafe_allow_html=True)
         decomp_level = st.slider("拆解粒度（人机协同选项）", 1, 5, 3, label_visibility="collapsed")
@@ -875,14 +872,12 @@ def page_consult():
             st.markdown(msg["content"])
 
     if query:
-        st.session_state["_clear_query"] = True  # 标记下一轮清空，避免重复提交
         st.session_state["chat"].append({"role": "user", "content": query})
         with st.chat_message("user", avatar="🧑‍💼"):
             st.markdown(query)
         with st.chat_message("assistant", avatar="🚩"):
             summary = run_workflow(query, decomp_level)
         st.session_state["chat"].append({"role": "assistant", "content": summary})
-        st.rerun()
 
 # ============================================================== 页面：Screen
 def page_screen():
