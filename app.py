@@ -597,6 +597,46 @@ SCREEN_ANALYSIS = {
     },
 }
 
+# 情绪面评论实例（FinBERT 标注 · 演示用示例，用于说明情绪面特征来源）
+SCREEN_SENTIMENT_SAMPLES = {
+    "白酒": {
+        "贵州茅台": [("飞天批价站稳 2200 元上方，渠道库存去化至良性区间", "正面", 0.94),
+                     ("直销渠道占比提升带动吨价上行，分红承诺稳定", "正面", 0.90)],
+        "五粮液": [("普五批价由 920 元回升至 960 元，盈利预期修复", "正面", 0.88),
+                   ("次高端需求仍有待动销验证", "中性", 0.55)],
+        "泸州老窖": [("国窖 1573 稳居高端第三极，腰部产品复苏明确", "正面", 0.76),
+                     ("行业去库存短期扰动业绩", "负面", 0.61)],
+        "山西汾酒": [("青花系列全国化扩张势头强劲", "正面", 0.74),
+                     ("青花 20 批价波动引发渠道担忧", "负面", 0.58)],
+        "洋河股份": [("梦之蓝 M6+ 省内动销平稳", "中性", 0.60),
+                     ("增长放缓，市场对其改革成效存疑", "负面", 0.62)],
+    },
+    "红利": {
+        "中国神华": [("分红率超 70%、股息率约 5.6%，现金流覆盖 1.5 倍", "正面", 0.91),
+                     ("长协煤占比高平滑周期波动", "正面", 0.85)],
+        "长江电力": [("六库联调提升发电效率，来水偏丰", "正面", 0.86),
+                     ("分红承诺 70% 以上，确定性极强", "正面", 0.88)],
+        "工商银行": [("股息率超 5%，受益中特估与市值管理", "正面", 0.80),
+                     ("净息差承压、信贷需求偏弱", "负面", 0.57)],
+        "陕西煤业": [("高分红延续，现金奶牛属性突出", "正面", 0.78),
+                     ("煤价下行预期压制盈利", "负面", 0.59)],
+        "宁沪高速": [("车流稳健、类债属性强", "正面", 0.72),
+                     ("弹性有限，缺乏成长故事", "中性", 0.52)],
+    },
+    "贵金属": {
+        "紫金矿业": [("卡莫阿、巨龙铜矿放量，矿产金三年复合增速超 20%", "正面", 0.93),
+                     ("美联储降息周期利好金价，量价齐升", "正面", 0.90)],
+        "山东黄金": [("西岭金矿探矿权注入预期强化资源储备", "正面", 0.84),
+                     ("金价上行期业绩弹性最大", "正面", 0.82)],
+        "中金黄金": [("纱岭金矿投产在即，产量跃升", "正面", 0.80),
+                     ("短期跟随板块回调", "负面", 0.60)],
+        "赤峰黄金": [("海外矿山产能释放，量增明确", "正面", 0.76),
+                     ("海外运营与汇率风险偏高", "负面", 0.58)],
+        "银泰黄金": [("玉龙矿业储量优质，成长空间大", "正面", 0.73),
+                     ("技术面走弱拖累短期情绪", "负面", 0.61)],
+    },
+}
+
 def render_analysis_block(industry: str, dim: str):
     """在 Screen 各维度 tab 中渲染带实例的叙事分析。"""
     block = SCREEN_ANALYSIS.get(industry, {}).get(dim)
@@ -1041,7 +1081,7 @@ def _tech_score(close_list):
 
 
 def _screen_score(pool, rt, klines):
-    """基于真实行情（涨跌幅 + 技术面）重算综合评分 0-100，写回 c['real_score']。"""
+    """基于真实行情（涨跌幅 + 技术面）重算综合评分 0-100，写回 c['real_score'] 与分项 c['score_break']。"""
     for c in pool:
         info = rt.get(c["code"], {})
         chg = info.get("chg")
@@ -1054,6 +1094,8 @@ def _screen_score(pool, rt, klines):
         sent_pos = c.get("sent", (0.6, 0.1, 0.3))[0]
         sent = 30 + sent_pos * 60
         c["real_score"] = round(0.30 * mom + 0.30 * tech + 0.25 * qual + 0.15 * sent, 1)
+        c["score_break"] = {"mom": round(mom, 1), "tech": round(tech, 1),
+                            "qual": round(qual, 1), "sent": round(sent, 1)}
 
 
 def bar_chart():
@@ -1516,6 +1558,24 @@ def page_screen():
                 st.plotly_chart(fig, use_container_width=True)
                 st.caption("FinBERT：基于 BERT 架构、在海量金融语料（财报 / 研报 / 新闻）上微调的情感分析模型")
                 render_analysis_block(industry, "sentiment")
+                # 评论实例（FinBERT 标注 · 演示用示例，说明情绪面特征来源）
+                _samples = SCREEN_SENTIMENT_SAMPLES.get(industry, {})
+                if _samples:
+                    st.markdown("**📋 情绪评论实例（FinBERT 标注）**")
+                    _rows = "".join(
+                        f"<tr><td style='padding:3px 10px;color:{NAVY};white-space:nowrap;'>{name}</td>"
+                        f"<td style='padding:3px 10px;'>{txt}</td>"
+                        f"<td style='padding:3px 10px;font-weight:700;color:{('#E54545' if lbl=='负面' else '#C9A227' if lbl=='正面' else '#8A93A8')};white-space:nowrap;'>{lbl} {score:.2f}</td></tr>"
+                        for name in [c["name"] for c in pool]
+                        for txt, lbl, score in _samples.get(name, [])
+                    )
+                    st.markdown(
+                        f"<table style='width:100%;font-size:.85rem;border-collapse:collapse;'>"
+                        f"<thead><tr style='color:#7A86A6;text-align:left;'><th style='padding:3px 10px;'>股票</th>"
+                        f"<th style='padding:3px 10px;'>评论实例</th><th style='padding:3px 10px;'>情感 / 置信度</th></tr></thead>"
+                        f"<tbody>{_rows}</tbody></table>",
+                        unsafe_allow_html=True)
+                    st.caption("↑ 以下为演示用示例评论，由 FinBERT 标注，用于说明情绪面特征的来源；并非实时真实舆情。")
             with t4:
                 c1, c2 = st.columns(2)
                 with c1:
@@ -1545,14 +1605,36 @@ def page_screen():
                               title=dict(text=f"LLM 综合评分（金色 = Top-3 入选）· 满分 100", font=dict(size=13, color=NAVY)),
                               yaxis=dict(range=[0, 100], gridcolor="#EEF1F8"))
             st.plotly_chart(fig, use_container_width=True)
-            st.caption("评分 Prompt：You are a senior equity analyst. 综合基本面 / 技术面 / 情绪面 / 行业面四维特征，0-100 打分")
+            # 评分依据拆解：展示各分项得分与加权汇总（真实模式且取到行情时）
+            if _use_real and any("score_break" in c for c in pool):
+                _bdata = []
+                for c in pool:
+                    b = c.get("score_break")
+                    if not b:
+                        continue
+                    _bdata.append({"股票": c["name"],
+                                   "动量·实时涨跌(30%)": b["mom"],
+                                   "技术面·MA/MACD(30%)": b["tech"],
+                                   "质量·ROE(25%)": b["qual"],
+                                   "情绪·正面占比(15%)": b["sent"],
+                                   "综合分": c["real_score"]})
+                if _bdata:
+                    st.markdown("**🧮 评分依据拆解**（综合分 = 0.30×动量 + 0.30×技术面 + 0.25×质量 + 0.15×情绪；各分项 0-100 加权汇总）")
+                    st.dataframe(pd.DataFrame(_bdata), use_container_width=True, hide_index=True)
+                    st.caption("分项来源：动量 = 实时涨跌幅映射；技术面 = 由真实日K计算的 MA20/60 与 MACD；质量 = ROE；情绪 = FinBERT 正面占比。Top-3 取综合分最高者。")
+            else:
+                st.caption("评分 Prompt：You are a senior equity analyst. 综合基本面 / 技术面 / 情绪面 / 行业面四维特征，0-100 打分（演示模式使用内置示例评分）。")
             s.update(label="⚖️ **LLM 综合评分** · Top-3 标的已锁定", state="complete")
 
         # 🤖 调用 DeepSeek 生成分析师观点与推荐理由（演示模式 / 无 Key / 异常时回退内置示例）
         _ds_label = "🤖 **DeepSeek 实时推理**" if _use_real else "🤖 **演示模式**"
         with st.status(f"{_ds_label} · 生成分析师观点与推荐理由…", expanded=True) as s:
             analyst_view = _screen_analyst_view(industry, risk, feat, pool, allow_real=_use_real)
-            reasons = [_screen_reason(stk, industry, risk, allow_real=_use_real) for stk in STOCKS[industry]]
+            reasons = []
+            for stk in STOCKS[industry]:
+                cand = next((c for c in pool if c["code"] == stk["code"]), stk)
+                merged = {**cand, **stk}   # STOCKS 含 reason/price/mv/pe；CANDIDATES 含 pb/roe/rev/趋势等特征
+                reasons.append(_screen_reason(merged, industry, risk, allow_real=_use_real))
             s.update(label=f"{_ds_label} · 观点与理由已生成", state="complete")
 
         st.info(f"**分析师观点**：{analyst_view}")
