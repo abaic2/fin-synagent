@@ -260,6 +260,28 @@ div[data-testid="stSidebar"] .stButton > button[kind="primary"] {{
   border-top:1px solid #E0E6F2;
 }}
 
+/* ---------- 对话式聊天：AI 左 · 用户右 ---------- */
+[data-testid="stChatMessage"] {{
+  background: #fff;
+  border: 1px solid #E3E8F4;
+  border-radius: 14px;
+  padding: 12px 16px;
+  box-shadow: 0 2px 10px rgba(20,40,80,.05);
+}}
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) {{
+  margin-right: 30%;  /* AI 回答靠左 */
+}}
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) {{
+  flex-direction: row-reverse;  /* 头像与内容镜像到右侧 */
+  margin-left: 30%;  /* 我的提问靠右 */
+  background: linear-gradient(135deg, #EEF4FF, #F6FAFF);
+  border-color: #C9DCF7;
+}}
+@media (max-width: 720px) {{
+  [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) {{ margin-right: 4%; }}
+  [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) {{ margin-left: 4%; }}
+}}
+
 /* ---------- 专有名词解释 ---------- */
 .gloss-grid {{ display:grid; grid-template-columns: repeat(2, 1fr); gap:14px; margin:8px 0 26px 0; }}
 .gloss-card {{
