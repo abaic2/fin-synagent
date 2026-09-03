@@ -1643,16 +1643,39 @@ def _em_code(code: str):
 
 
 def fetch_stock_news(code: str, n: int = 5):
-    """抓取单只股票的真实相关资讯（东方财富个股公告优先，回退个股新闻），返回 [{title, source, date}]。
-    内容与传入的 code 严格对应，避免与无关标的混淆。"""
-    H = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-         "Referer": "https://quote.eastmoney.com/"}
-    emc = _em_code(code)
-    # 主源：东方财富个股公告（按股票代码精确过滤）
+    """抓取单只股票的真实相关资讯（新浪财经个股资讯 HTML 优先，回退东方财富个股公告/新闻），
+    返回 [{title, source, date, url}]。内容与传入的 code 严格对应，避免与无关标的混淆。"""
+    H = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    # 主源：新浪财经个股资讯 HTML（境内外可达性更好，且内容按 symbol 严格对应）
     try:
+        num, mkt = code.split(".")
+        symbol = (mkt.lower() if mkt.lower() in ("sh", "sz") else "sh") + num
+        url = f"https://vip.stock.finance.sina.com.cn/corp/view/vCB_AllNewsStock.php?symbol={symbol}&num={max(n,8)}"
+        req = _ur.Request(url, headers={**H, "Referer": "https://finance.sina.com.cn/"})
+        with _ur.urlopen(req, timeout=8) as r:
+            html = r.read().decode("gbk", "ignore")
+        m = re.search(r'<div class="datelist"><ul>(.*?)</ul>\s*</div>', html, re.S)
+        if m:
+            ul = m.group(1)
+            nbsp = r"(?:&nbsp;|\s)*"
+            pattern = (r"(\d{4}-\d{2}-\d{2})" + nbsp + r"(?:\d{2}:\d{2})" + nbsp +
+                       r"<a[^>]+href=[\"\']([^\"\']+)[\"\'][^>]*>(.*?)</a>")
+            out = []
+            for dm, href, title in re.findall(pattern, ul, re.S):
+                title = re.sub(r"<[^>]+>", "", title).strip()
+                if title:
+                    out.append({"title": title, "source": "新浪·个股资讯",
+                                "date": dm, "url": href})
+            if out:
+                return out[:n]
+    except Exception:
+        pass
+    # 回退源 1：东方财富个股公告（按股票代码精确过滤）
+    try:
+        emc = _em_code(code)
         url = (f"https://np-anotice-stock.eastmoney.com/api/security/ann?srctype=share&ann_type=2"
                f"&client_source=web&stock_list={emc}&page_index=1&page_size={n}")
-        req = _ur.Request(url, headers=H)
+        req = _ur.Request(url, headers={**H, "Referer": "https://quote.eastmoney.com/"})
         with _ur.urlopen(req, timeout=4) as r:
             d = json.loads(r.read().decode("utf-8"))
         lst = (d.get("data") or {}).get("list") or []
@@ -1661,17 +1684,18 @@ def fetch_stock_news(code: str, n: int = 5):
             t = it.get("title") or it.get("title_cn") or ""
             if not t:
                 continue
-            out.append({"title": t, "source": "东方财富·个股公告",
-                        "date": (it.get("notice_date") or it.get("eitime") or "")[:10]})
+            out.append({"title": t, "source": "东方财富·个股公告", "date":
+                        (it.get("notice_date") or it.get("eitime") or "")[:10], "url": ""})
         if out:
             return out[:n]
     except Exception:
         pass
-    # 回退源：东方财富个股新闻
+    # 回退源 2：东方财富个股新闻
     try:
+        emc = _em_code(code)
         url = (f"https://np-listapi.eastmoney.com/comm/web/getNewsByCode?code={emc[2:]}"
                f"&pageSize={n}&pageIndex=1&type=1&fields=code,title,date,from")
-        req = _ur.Request(url, headers=H)
+        req = _ur.Request(url, headers={**H, "Referer": "https://quote.eastmoney.com/"})
         with _ur.urlopen(req, timeout=4) as r:
             d = json.loads(r.read().decode("utf-8"))
         lst = (d.get("data") or {}).get("list") or []
@@ -1681,7 +1705,7 @@ def fetch_stock_news(code: str, n: int = 5):
             if not t:
                 continue
             out.append({"title": t, "source": it.get("from") or "东方财富",
-                        "date": (it.get("date") or "")[:10]})
+                        "date": (it.get("date") or "")[:10], "url": ""})
         if out:
             return out[:n]
     except Exception:
@@ -1882,17 +1906,21 @@ def page_screen():
                             if _nws:
                                 _lbls = _label_news([n["title"] for n in _nws], allow_real=_use_real)
                                 for n, (lbl, _) in zip(_nws, _lbls):
-                                    _all_rows.append((c["name"], n["title"], n["source"], n["date"], lbl))
+                                    _all_rows.append((c["name"], n["title"], n.get("source", "—"), n.get("date", "—"), lbl, n.get("url", "")))
                             else:
-                                _all_rows.append((c["name"], "（该标的暂无实时新闻/公告）", "—", "—", "—"))
+                                _all_rows.append((c["name"], "（该标的暂无实时新闻/公告）", "—", "—", "—", ""))
                         if _all_rows:
+                            def _title_cell(tt, url):
+                                if url:
+                                    return f"<a href='{url}' target='_blank' style='color:#3A4566;text-decoration:none;'>🡕 {tt}</a>"
+                                return tt
                             _nrows = "".join(
                                 f"<tr><td style='padding:3px 8px;color:{NAVY};font-weight:600;white-space:nowrap;'>{nm}</td>"
-                                f"<td style='padding:3px 8px;'>{tt}</td>"
+                                f"<td style='padding:3px 8px;'>" + _title_cell(tt, uu) + "</td>"
                                 f"<td style='padding:3px 8px;color:#7A86A6;white-space:nowrap;'>{src}</td>"
                                 f"<td style='padding:3px 8px;color:#7A86A6;white-space:nowrap;'>{dt}</td>"
                                 f"<td style='padding:3px 8px;font-weight:700;color:{('#E54545' if lbl=='负面' else '#C9A227' if lbl=='正面' else '#8A93A8')};white-space:nowrap;'>{lbl}</td></tr>"
-                                for nm, tt, src, dt, lbl in _all_rows
+                                for nm, tt, src, dt, lbl, uu in _all_rows
                             )
                             st.markdown(
                                 f"<table style='width:100%;font-size:.82rem;border-collapse:collapse;'>"
@@ -1902,7 +1930,7 @@ def page_screen():
                                 f"<th style='padding:3px 8px;'>情绪</th></tr></thead>"
                                 f"<tbody>{_nrows}</tbody></table>",
                                 unsafe_allow_html=True)
-                            st.caption("↑ 每条资讯均标注所属标的，仅显示该标的自身的真实新闻/公告（东方财富接口按股票代码精确过滤）。"
+                            st.caption("↑ 每条资讯均标注所属标的，仅显示该标的自身的真实新闻/公告（新浪个股资讯按 symbol 抓取，东财公告/新闻为回退源）。"
                                        + (" 情绪由金融词库 + DeepSeek 标注。" if _use_real else " 情绪由金融词库标注。"))
                         else:
                             st.info("⚠️ 实时资讯抓取失败（网络受限，常见于境外部署节点），已略过；个股情绪解读不受影响。")
