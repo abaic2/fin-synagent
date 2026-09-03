@@ -289,6 +289,10 @@ div[data-testid="stSidebar"] .stButton > button[kind="primary"] {{
 }}
 .chat-welcome b {{ color:{NAVY}; }}
 
+.mode-badge {{ display:inline-block; padding:5px 14px; border-radius:999px; font-size:.82rem; font-weight:700; margin-bottom:12px; letter-spacing:.02em; }}
+.mode-real {{ background:rgba(34,197,94,.14); color:#15803d; border:1px solid rgba(34,197,94,.45); }}
+.mode-demo {{ background:rgba(245,158,11,.16); color:#b45309; border:1px solid rgba(245,158,11,.45); }}
+
 /* ---------- 专有名词解释 ---------- */
 .gloss-grid {{ display:grid; grid-template-columns: repeat(2, 1fr); gap:14px; margin:8px 0 26px 0; }}
 .gloss-card {{
@@ -995,6 +999,13 @@ def page_consult():
       <div class="sub" style="margin-bottom:0;">System-2 深思熟虑 · Multi-Agent 互相监督 · Web 检索 &amp; 知识库求证 · 显式思维链</div>
     </div>
     """, unsafe_allow_html=True)
+
+    # 当前模式徽章：根据是否配置了 DeepSeek API Key 实时显示（演示 / 真实）
+    _ds_cfg = bool(st.secrets.get("DEEPSEEK_API_KEY", "").strip())
+    if _ds_cfg:
+        st.markdown('<div class="mode-badge mode-real">🟢 真实模式 · 接入 DeepSeek 实时推理</div>', unsafe_allow_html=True)
+    else:
+        st.markdown('<div class="mode-badge mode-demo">🟠 演示模式 · 内置示例（未配置 API Key）</div>', unsafe_allow_html=True)
 
     st.markdown("""
     <div style="margin-bottom:14px;">
