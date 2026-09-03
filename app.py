@@ -850,11 +850,14 @@ def page_consult():
     if "chat" not in st.session_state:
         st.session_state["chat"] = []
 
+    # 上一轮提交后，于 widget 实例化之前清空输入框（规避对已实例化 widget key 直接赋值报错）
+    if st.session_state.get("_clear_query"):
+        st.session_state["consult_query_input"] = ""
+        del st.session_state["_clear_query"]
+
     # 居中的咨询输入框
     _, center_col, _ = st.columns([1, 1, 1])
     with center_col:
-        if "pending_query" in st.session_state:
-            st.session_state["consult_query_input"] = st.session_state.pop("pending_query")
         query = st.text_input(
             "投资咨询问题",
             placeholder="请输入您的投资咨询问题，例如：白酒行业最近行情如何？",
@@ -862,18 +865,23 @@ def page_consult():
             key="consult_query_input"
         )
 
+    # 引导词点击：直接作为 query 发送（不回显到输入框，与原 chat_input 行为一致）
+    if "pending_query" in st.session_state:
+        query = st.session_state.pop("pending_query")
+
     for msg in st.session_state["chat"]:
         with st.chat_message(msg["role"], avatar="🧑‍💼" if msg["role"] == "user" else "🚩"):
             st.markdown(msg["content"])
 
     if query:
-        st.session_state["consult_query_input"] = ""  # 清空输入框，避免重复提交
+        st.session_state["_clear_query"] = True  # 标记下一轮清空，避免重复提交
         st.session_state["chat"].append({"role": "user", "content": query})
         with st.chat_message("user", avatar="🧑‍💼"):
             st.markdown(query)
         with st.chat_message("assistant", avatar="🚩"):
             summary = run_workflow(query, decomp_level)
         st.session_state["chat"].append({"role": "assistant", "content": summary})
+        st.rerun()
 
 # ============================================================== 页面：Screen
 def page_screen():
