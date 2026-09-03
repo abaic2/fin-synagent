@@ -1430,6 +1430,174 @@ def _screen_reason(stk: dict, industry: str, risk: str, allow_real: bool = True)
     return _ds_text(sys_p, user_p, fb, allow_real=allow_real)
 
 
+# ---- 情绪面：真实舆情解读 + 实时市场资讯 ----
+_POS_WORDS = ["上涨", "增持", "买入", "利好", "增长", "超预期", "创新高", "盈利", "分红", "回购",
+             "扩产", "中标", "签约", "复苏", "提升", "改善", "强劲", "突破", "上调", "稳增", "回暖"]
+_NEG_WORDS = ["下跌", "减持", "卖出", "利空", "下滑", "不及预期", "亏损", "下调", "风险", "承压",
+             "诉讼", "处罚", "退市", "暴雷", "违约", "冻结", "调查", "暴跌", "回落", "缩水", "放缓"]
+
+
+def _lexicon_sentiment(text: str):
+    """本地金融情感词库启发式标注：返回 (label, score 0-1)。"""
+    p = sum(1 for w in _POS_WORDS if w in text)
+    n = sum(1 for w in _NEG_WORDS if w in text)
+    if p > n:
+        return ("正面", round(min(0.95, 0.6 + 0.12 * p), 2))
+    if n > p:
+        return ("负面", round(min(0.95, 0.6 + 0.12 * n), 2))
+    return ("中性", 0.55)
+
+
+def _to_sent_tuple(label: str, score: float):
+    """由 (标签, 置信度) 生成三分类堆叠元组 (正, 负, 中)，求和≈1。"""
+    s = max(0.08, min(0.95, score))
+    if label == "正面":
+        neg = round((1 - s) * 0.30, 2); neu = round(1 - s - neg, 2)
+        return (round(s, 2), neg, neu)
+    if label == "负面":
+        pos = round((1 - s) * 0.30, 2); neu = round(1 - s - pos, 2)
+        return (pos, round(s, 2), neu)
+    pos = neg = round((1 - s) / 2, 2); neu = round(1 - pos - neg, 2)
+    return (pos, neg, neu)
+
+
+def _heuristic_sentiment(f: dict):
+    """基于真实行情/技术面特征的规则启发式情绪研判。"""
+    chg = f.get("chg")
+    trend = f.get("trend")
+    macd = f.get("macd")
+    score = 0.55
+    if chg is not None:
+        score += chg * 0.05
+    if trend == "上升趋势":
+        score += 0.10
+    elif trend == "弱势整理":
+        score -= 0.10
+    if macd == "金叉":
+        score += 0.08
+    elif macd == "死叉":
+        score -= 0.08
+    score = max(0.08, min(0.95, score))
+    label = "正面" if score >= 0.60 else ("负面" if score <= 0.42 else "中性")
+    chg_s = f"{chg:+.2f}%" if isinstance(chg, (int, float)) else "—"
+    summary = f"基于行情特征（涨跌幅 {chg_s}、趋势『{trend}』、MACD『{macd}』）的情绪研判为{label}。"
+    return {"label": label, "score": round(score, 2), "summary": summary,
+            "sent_tuple": _to_sent_tuple(label, score)}
+
+
+def _screen_sentiment(pool, industry, risk, rt, klines, allow_real=True):
+    """为候选池每只股票生成情绪面解读（标签+置信度+摘要+三分类元组）。
+    真实模式：1 次 DeepSeek 批量调用，基于真实行情/技术面特征生成；
+    演示/无 Key：基于真实特征的规则启发式。返回 {code: {label, score, summary, sent_tuple}}。"""
+    feats = {}
+    for c in pool:
+        info = (rt or {}).get(c["code"], {}) if rt else {}
+        kl = (klines or {}).get(c["code"]) if klines else None
+        tech = _compute_tech(kl["close"].tolist()) if (kl is not None and len(kl) >= 60) else None
+        chg = info.get("chg")
+        if chg is None:
+            chg = c.get("chg")
+        trend = (tech or {}).get("trend") or c.get("trend")
+        macd = (tech or {}).get("macd") or c.get("macd")
+        feats[c["code"]] = {
+            "name": c["name"], "code": c["code"],
+            "price": info.get("price", c["price"]), "chg": chg,
+            "pe": info.get("pe", c["pe"]), "roe": c.get("roe"),
+            "trend": trend, "macd": macd,
+        }
+    if allow_real:
+        fb = {code: _heuristic_sentiment(f) for code, f in feats.items()}
+        fb_json = json.dumps({k: {"label": v["label"], "score": v["score"], "summary": v["summary"]}
+                              for k, v in fb.items()}, ensure_ascii=False)
+        sys_p = ("你是金融情绪分析专家。基于给定 A 股标的的真实行情与技术面特征，判断其当前市场情绪"
+                 "（正面/中性/负面），给出 0-1 置信度，并用 1 句话说明依据（结合涨跌幅、趋势、MACD）。"
+                 "只输出 JSON，格式：{\"600519\":{\"label\":\"正面\",\"score\":0.82,\"summary\":\"...\"}}，不要多余文字。")
+        user_p = "行业：" + industry + "；风险偏好：" + risk + "。特征：" + json.dumps(feats, ensure_ascii=False)
+        try:
+            parsed = json.loads(_ds_text(sys_p, user_p, fb_json, allow_real=True))
+            out = {}
+            for c in pool:
+                code = c["code"]
+                d = parsed.get(code) if isinstance(parsed, dict) else None
+                if isinstance(d, dict) and d.get("label"):
+                    label = d["label"]; score = float(d.get("score", 0.5))
+                    out[code] = {"label": label, "score": round(score, 2),
+                                 "summary": d.get("summary", fb[code]["summary"]),
+                                 "sent_tuple": _to_sent_tuple(label, score)}
+                else:
+                    out[code] = fb[code]
+            return out
+        except Exception:
+            return fb
+    return {code: _heuristic_sentiment(f) for code, f in feats.items()}
+
+
+def _ts_to_date(ts):
+    try:
+        return datetime.datetime.fromtimestamp(int(ts), tz=datetime.timezone.utc).strftime("%Y-%m-%d")
+    except Exception:
+        return ""
+
+
+def fetch_market_news(n: int = 10):
+    """拉取真实财经新闻头条（实时，非硬编码）。优先新浪财经，失败回退东方财富公告。返回 [{title, source, date}]。"""
+    H = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    try:
+        url = f"https://feed.mix.sina.com.cn/api/roll/get?pageid=153&lid=2515&num={n}&page=1"
+        req = _ur.Request(url, headers=H)
+        with _ur.urlopen(req, timeout=8) as r:
+            d = json.loads(r.read().decode("utf-8"))
+        lst = (d.get("result") or {}).get("data") or []
+        out = []
+        for it in lst:
+            title = it.get("title") or ""
+            if not title:
+                continue
+            ctime = it.get("ctime") or it.get("create_time")
+            out.append({"title": title, "source": it.get("media_name") or it.get("source") or "新浪财经",
+                        "date": _ts_to_date(ctime) if ctime else ""})
+        if out:
+            return out[:n]
+    except Exception:
+        pass
+    try:
+        url = f"https://np-anotice-stock.eastmoney.com/api/security/ann?sr=-1&page_size={n}&page_index=1"
+        req = _ur.Request(url, headers=H)
+        with _ur.urlopen(req, timeout=8) as r:
+            d = json.loads(r.read().decode("utf-8"))
+        lst = (d.get("data") or {}).get("list") or []
+        out = []
+        for it in lst:
+            title = it.get("title") or it.get("title_ch") or ""
+            if not title:
+                continue
+            out.append({"title": title, "source": "东方财富公告", "date": (it.get("notice_date") or "")[:10]})
+        return out[:n]
+    except Exception:
+        return []
+
+
+def _label_news(texts, allow_real=True):
+    """对真实新闻标题做情感标注，返回 [(label, score)]。真实模式可选 DeepSeek，否则本地词库。"""
+    if allow_real and texts and _ds_client() is not None:
+        sys_p = ("你是金融舆情分析专家。对给定财经新闻标题逐条判断情绪（正面/中性/负面），"
+                 "输出 JSON 数组，每项 {\"label\":\"...\",\"score\":0-1}。只输出 JSON。")
+        try:
+            arr = json.loads(_ds_text(sys_p, json.dumps(texts, ensure_ascii=False), "", allow_real=True))
+            if isinstance(arr, list):
+                res = []
+                for i, t in enumerate(texts):
+                    d = arr[i] if i < len(arr) and isinstance(arr[i], dict) else {}
+                    if d.get("label"):
+                        res.append((d["label"], float(d.get("score", 0.5))))
+                    else:
+                        res.append(_lexicon_sentiment(t))
+                return res
+        except Exception:
+            pass
+    return [_lexicon_sentiment(t) for t in texts]
+
+
 def page_screen():
     st.markdown("""
     <div class="hero hero-mini">
@@ -1520,6 +1688,10 @@ def page_screen():
 
         with st.status("🧬 **多维特征提取** · 基本面 / 技术面 / 情绪面 / 行业面 → 特征合成…", expanded=True) as s:
             time.sleep(0.9)
+            # 情绪面：真实模式下由 DeepSeek 基于实时行情/技术面生成；演示模式用规则启发式
+            sent_res = _screen_sentiment(pool, industry, risk, rt, klines, allow_real=_use_real)
+            for c in pool:
+                c["sent"] = sent_res[c["code"]]["sent_tuple"]
             t1, t2, t3, t4 = st.tabs(["💰 基本面特征", "📈 技术面特征", "💬 情绪面特征（FinBERT）", "🏭 行业面特征"])
             with t1:
                 fund_rows = []
@@ -1558,24 +1730,43 @@ def page_screen():
                 st.plotly_chart(fig, use_container_width=True)
                 st.caption("FinBERT：基于 BERT 架构、在海量金融语料（财报 / 研报 / 新闻）上微调的情感分析模型")
                 render_analysis_block(industry, "sentiment")
-                # 评论实例（FinBERT 标注 · 演示用示例，说明情绪面特征来源）
-                _samples = SCREEN_SENTIMENT_SAMPLES.get(industry, {})
-                if _samples:
-                    st.markdown("**📋 情绪评论实例（FinBERT 标注）**")
-                    _rows = "".join(
-                        f"<tr><td style='padding:3px 10px;color:{NAVY};white-space:nowrap;'>{name}</td>"
-                        f"<td style='padding:3px 10px;'>{txt}</td>"
-                        f"<td style='padding:3px 10px;font-weight:700;color:{('#E54545' if lbl=='负面' else '#C9A227' if lbl=='正面' else '#8A93A8')};white-space:nowrap;'>{lbl} {score:.2f}</td></tr>"
-                        for name in [c["name"] for c in pool]
-                        for txt, lbl, score in _samples.get(name, [])
-                    )
-                    st.markdown(
-                        f"<table style='width:100%;font-size:.85rem;border-collapse:collapse;'>"
-                        f"<thead><tr style='color:#7A86A6;text-align:left;'><th style='padding:3px 10px;'>股票</th>"
-                        f"<th style='padding:3px 10px;'>评论实例</th><th style='padding:3px 10px;'>情感 / 置信度</th></tr></thead>"
-                        f"<tbody>{_rows}</tbody></table>",
-                        unsafe_allow_html=True)
-                    st.caption("↑ 以下为演示用示例评论，由 FinBERT 标注，用于说明情绪面特征的来源；并非实时真实舆情。")
+                # 个股情绪解读：🟢 真实模式由 DeepSeek 基于实时行情/技术面生成；🟠 演示模式用规则启发式
+                _sent_mode = "DeepSeek 实时生成（基于实时行情 / 技术面）" if _use_real else "演示模式（规则启发式，未调用外部接口）"
+                _rows = "".join(
+                    f"<tr><td style='padding:4px 10px;color:{NAVY};white-space:nowrap;font-weight:600;'>{c['name']}</td>"
+                    f"<td style='padding:4px 10px;font-weight:700;color:{('#E54545' if sent_res[c['code']]['label']=='负面' else '#C9A227' if sent_res[c['code']]['label']=='正面' else '#8A93A8')};white-space:nowrap;'>{sent_res[c['code']]['label']} {sent_res[c['code']]['score']:.2f}</td>"
+                    f"<td style='padding:4px 10px;color:#3A4566;'>{sent_res[c['code']]['summary']}</td></tr>"
+                    for c in pool
+                )
+                st.markdown(f"**📋 个股情绪解读（{_sent_mode}）**")
+                st.markdown(
+                    f"<table style='width:100%;font-size:.85rem;border-collapse:collapse;'>"
+                    f"<thead><tr style='color:#7A86A6;text-align:left;'><th style='padding:4px 10px;'>股票</th>"
+                    f"<th style='padding:4px 10px;'>情绪 / 置信度</th><th style='padding:4px 10px;'>解读依据</th></tr></thead>"
+                    f"<tbody>{_rows}</tbody></table>",
+                    unsafe_allow_html=True)
+                st.caption("↑ 情绪研判基于实时涨跌幅、趋势、MACD 等字段" + ("，由 DeepSeek 推理生成" if _use_real else "（演示模式为规则启发式）") + "。")
+                # 实时市场资讯（真实新闻头条，非硬编码）
+                with st.expander("🌐 实时市场资讯（真实新闻头条 · 情绪标注）"):
+                    _news = fetch_market_news(10)
+                    if _news:
+                        _labels = _label_news([n["title"] for n in _news], allow_real=_use_real)
+                        _nrows = "".join(
+                            f"<tr><td style='padding:3px 8px;'>{n['title']}</td>"
+                            f"<td style='padding:3px 8px;color:#7A86A6;white-space:nowrap;'>{n['source']}</td>"
+                            f"<td style='padding:3px 8px;color:#7A86A6;white-space:nowrap;'>{n['date']}</td>"
+                            f"<td style='padding:3px 8px;font-weight:700;color:{('#E54545' if lbl=='负面' else '#C9A227' if lbl=='正面' else '#8A93A8')};white-space:nowrap;'>{lbl}</td></tr>"
+                            for n, (lbl, _) in zip(_news, _labels)
+                        )
+                        st.markdown(
+                            f"<table style='width:100%;font-size:.82rem;border-collapse:collapse;'>"
+                            f"<thead><tr style='color:#7A86A6;text-align:left;'><th style='padding:3px 8px;'>标题</th>"
+                            f"<th style='padding:3px 8px;'>来源</th><th style='padding:3px 8px;'>日期</th><th style='padding:3px 8px;'>情绪</th></tr></thead>"
+                            f"<tbody>{_nrows}</tbody></table>",
+                            unsafe_allow_html=True)
+                        st.caption("↑ 新闻来自新浪财经 / 东方财富实时接口（真实抓取，非演示），情绪由金融词库" + (" + DeepSeek 标注" if _use_real else "标注") + "。")
+                    else:
+                        st.info("⚠️ 实时资讯拉取失败（网络受限，常见于境外部署节点），已略过；个股情绪解读不受影响。")
             with t4:
                 c1, c2 = st.columns(2)
                 with c1:
