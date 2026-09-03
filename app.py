@@ -707,6 +707,7 @@ def mock_spark_response(model: str, prompt: str, answer: str, temperature: float
 # 通过 OpenAI 兼容协议调用 DeepSeek：https://api.deepseek.com ，默认模型 deepseek-chat (V3)
 DS_BASE_URL = "https://api.deepseek.com"
 DS_MODEL = "deepseek-chat"
+DS_FALLBACK_KEY = "sk-6660156768e541d895455ca4088471e3"  # 硬编码兜底：仅用于页面展示与免粘贴调用；已告知用户，建议用后于 platform.deepseek.com 轮换
 
 
 def _ds_client():
@@ -717,7 +718,7 @@ def _ds_client():
     except Exception:
         ss_key = (st.session_state.get("ds_api_key", "") or "").strip()
         sec_key = ""
-    key = ss_key or sec_key
+    key = ss_key or sec_key or DS_FALLBACK_KEY
     if not key:
         return None
     try:
@@ -877,7 +878,7 @@ def run_workflow(query: str, decomp_level: int, use_real=None):
     kb_tag = "宏观" if rag_key == "default" else rag_key
     rag_ctx = "\n".join(f"【{h['source']} · p{h['page']}】{h['text']}" for h in rag_hits) if rag_hits else "（知识库未加载，以下为通用分析）"
 
-    key_ok = bool((st.session_state.get("ds_api_key", "") or "").strip() or (st.secrets.get("DEEPSEEK_API_KEY", "") or "").strip())
+    key_ok = bool((st.session_state.get("ds_api_key", "") or "").strip() or (st.secrets.get("DEEPSEEK_API_KEY", "") or "").strip() or DS_FALLBACK_KEY)
     if use_real is None:
         use_real = (st.session_state.get("app_mode", "real") == "real")
     real = bool(use_real) and key_ok
@@ -1034,16 +1035,12 @@ def page_consult():
         elif "ds_api_key" in st.session_state:
             del st.session_state["ds_api_key"]
 
-        # 显示 / 复制 辅助：当前可用的 key（界面输入优先于 secrets），直接回显以便复制
-        _cur_key = (st.session_state.get("ds_api_key", "") or "").strip() or (st.secrets.get("DEEPSEEK_API_KEY", "") or "").strip()
-        if _cur_key:
-            st.code(_cur_key, language="text")
-            st.caption("⚠️ 此 Key 在当前页面直接可见。若该应用部署在公开网址，任何访客都能看到——请勿在公开环境展示真实 Key。复制请点代码块右上角按钮。")
-        else:
-            st.caption("提示：在上方粘贴 Key 后，这里会直接显示以便复制。")
+        # 显示 / 复制 辅助：直接在页面展示真实 Key，便于复制
+        st.code(DS_FALLBACK_KEY, language="text")
+        st.caption("⚠️ 上方为当前使用的 DeepSeek API Key，已在页面直接展示。若应用部署在公开网址，任何访客都能看到——请勿在公开环境展示真实 Key，建议用完后在 platform.deepseek.com 轮换。")
 
     # 运行模式切换：真实模式（DeepSeek 实时推理）/ 演示模式（内置示例），可在界面手动切换
-    _ds_cfg = bool((st.session_state.get("ds_api_key", "") or "").strip() or (st.secrets.get("DEEPSEEK_API_KEY", "") or "").strip())
+    _ds_cfg = bool((st.session_state.get("ds_api_key", "") or "").strip() or (st.secrets.get("DEEPSEEK_API_KEY", "") or "").strip() or DS_FALLBACK_KEY)
     if "app_mode" not in st.session_state:
         st.session_state["app_mode"] = "real" if _ds_cfg else "demo"
     _app_mode = st.radio(
