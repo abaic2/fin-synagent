@@ -1825,13 +1825,16 @@ with st.sidebar:
             "border-left": "4px solid #E8C766",
         },
     }
+    # 快照「上一轮」各分组选中值，用于 Detect 本轮点击（option_menu 会把新值同步进 session_state[_key]，
+    # 若直接拿 _sel 与 session_state[_key] 比较永远相等，跳转逻辑永不触发）
+    _prev_nav = {_t: st.session_state.get("nav_" + _t) for _t, _o, _i in NAV_GROUPS}
     for _title, _opts, _icons in NAV_GROUPS:
         _key = "nav_" + _title
         if _key not in st.session_state:
             st.session_state[_key] = st.session_state["nav"] if st.session_state["nav"] in _opts else _opts[0]
         _sel = option_menu(menu_title=_title, options=_opts, icons=_icons,
                           default_index=_opts.index(st.session_state[_key]), key=_key, styles=SB_STYLES)
-        if _sel != st.session_state[_key]:
+        if _prev_nav.get(_title) is not None and _sel != _prev_nav[_title]:
             _select_nav(_sel)
             st.rerun()
     st.markdown("---")
