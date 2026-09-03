@@ -809,6 +809,150 @@ def price_chart(df: pd.DataFrame, name: str):
     return fig
 
 
+# ============================================================== 实时行情接入
+# 数据源：东方财富 push2 实时报价 + push2his 日K。纯标准库 urllib，无需额外依赖；
+# 网络受限时所有函数安全回退（返回空 / None），由调用方落到内置演示数据。
+import urllib.request as _ur
+
+_EM_HEADERS = {"User-Agent": "Mozilla/5.0", "Referer": "https://quote.eastmoney.com/"}
+
+
+def _em_secid(code: str) -> str:
+    """600519.SH -> 1.600519 ; 000858.SZ -> 0.000858"""
+    mkt = "1" if code.upper().endswith("SH") else "0"
+    return f"{mkt}.{code.split('.')[0]}"
+
+
+def _to_float(v):
+    try:
+        return float(v)
+    except Exception:
+        return None
+
+
+def _fmt_mv(yuan):
+    """东方财富总市值单位为「元」，转换为 亿 / 万亿。"""
+    if yuan is None:
+        return "—"
+    try:
+        yi = float(yuan) / 1e8
+    except Exception:
+        return "—"
+    if yi >= 10000:
+        return f"{yi / 10000:.2f}万亿"
+    return f"{yi:.0f}亿"
+
+
+def fetch_realtime(codes):
+    """批量获取实时行情，返回 {code: {name, price, chg, mv}}。失败返回空 dict。"""
+    out = {}
+    for code in codes:
+        secid = _em_secid(code)
+        url = (f"https://push2.eastmoney.com/api/qt/stock/get?secid={secid}"
+               f"&fields=f43,f57,f58,f60,f116&fltt=2&invt=2")
+        try:
+            req = _ur.Request(url, headers=_EM_HEADERS)
+            with _ur.urlopen(req, timeout=5) as r:
+                data = json.loads(r.read().decode("utf-8"))
+            d = (data.get("data") or {})
+            if not d:
+                continue
+            price = _to_float(d.get("f43"))
+            prev = _to_float(d.get("f60"))
+            if price is None or price == 0:
+                continue
+            chg = (price - prev) / prev * 100 if prev else 0.0
+            out[code] = {
+                "name": (d.get("f58") or code).replace(" ", ""),
+                "price": price,
+                "chg": round(chg, 2),
+                "mv": _to_float(d.get("f116")),  # 总市值（元）
+            }
+        except Exception:
+            continue
+        time.sleep(0.12)  # 礼貌间隔，降低东方财富限流概率
+    return out
+
+
+def fetch_kline(code, days: int = 120):
+    """获取真实日K收盘价序列，返回 DataFrame[date, close] 或 None。"""
+    secid = _em_secid(code)
+    url = (f"https://push2his.eastmoney.com/api/qt/stock/kline/get?secid={secid}"
+           f"&klt=101&fqt=0&lmt={days}&end=20500101"
+           f"&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61")
+    try:
+        req = _ur.Request(url, headers=_EM_HEADERS)
+        with _ur.urlopen(req, timeout=6) as r:
+            data = json.loads(r.read().decode("utf-8"))
+        klines = (data.get("data") or {}).get("klines") or []
+        rows = []
+        for kl in klines:
+            parts = kl.split(",")
+            if len(parts) >= 3:
+                rows.append((parts[0], float(parts[2])))  # f51 日期, f53 收盘
+        if not rows:
+            return None
+        return pd.DataFrame(rows, columns=["date", "close"])
+    except Exception:
+        return None
+
+
+def _compute_tech(close_list):
+    """由真实收盘价序列计算技术面特征（MA20/MA60/MACD/趋势/波动率）。"""
+    s = pd.Series(close_list)
+    ma20 = s.rolling(20).mean().iloc[-1]
+    ma60 = s.rolling(60).mean().iloc[-1]
+    ema12 = s.ewm(span=12, adjust=False).mean()
+    ema26 = s.ewm(span=26, adjust=False).mean()
+    dif = ema12 - ema26
+    dea = dif.ewm(span=9, adjust=False).mean()
+    macd = (dif - dea).iloc[-1]
+    prev_macd = (dif - dea).iloc[-2]
+    if macd > 0 and prev_macd <= 0:
+        macd_lbl = "金叉"
+    elif macd < 0 and prev_macd >= 0:
+        macd_lbl = "死叉"
+    else:
+        macd_lbl = "粘合"
+    if ma20 > ma60 * 1.005:
+        trend = "上升趋势"
+    elif ma20 < ma60 * 0.995:
+        trend = "弱势整理"
+    else:
+        trend = "横盘整理"
+    vol = s.pct_change().std() * 100
+    vol_lbl = "低波动" if vol < 1.5 else ("中波动" if vol < 2.5 else "高波动")
+    ma_lbl = f"MA20 {'>' if ma20 > ma60 else '<'} MA60"
+    return {"trend": trend, "ma": ma_lbl, "vol": vol_lbl, "macd": macd_lbl}
+
+
+def _tech_score(close_list):
+    """由真实收盘价序列返回 0-100 技术面得分（趋势 + MACD）。"""
+    try:
+        t = _compute_tech(close_list)
+    except Exception:
+        return 60
+    trend_w = {"上升趋势": 1.0, "横盘整理": 0.5, "弱势整理": 0.0}.get(t["trend"], 0.5)
+    macd_w = {"金叉": 1.0, "粘合": 0.5, "死叉": 0.0}.get(t["macd"], 0.5)
+    return round((trend_w * 0.6 + macd_w * 0.4) * 100, 1)
+
+
+def _screen_score(pool, rt, klines):
+    """基于真实行情（涨跌幅 + 技术面）重算综合评分 0-100，写回 c['real_score']。"""
+    for c in pool:
+        info = rt.get(c["code"], {})
+        chg = info.get("chg")
+        mom = 55 + (chg * 7 if chg is not None else 0)
+        mom = max(15, min(95, mom))
+        kl = klines.get(c["code"])
+        tech = _tech_score(kl["close"].tolist()) if (kl is not None and len(kl) >= 60) else 60
+        roe = c.get("roe", 15)
+        qual = max(20, min(98, roe * 2.6))
+        sent_pos = c.get("sent", (0.6, 0.1, 0.3))[0]
+        sent = 30 + sent_pos * 60
+        c["real_score"] = round(0.30 * mom + 0.30 * tech + 0.25 * qual + 0.15 * sent, 1)
+
+
 def bar_chart():
     import plotly.graph_objects as go
     models = ["Kimi AI", "Spark Max", "Spark Ultra", "Fin Synagent"]
@@ -1157,10 +1301,22 @@ def page_screen():
         run = st.button("🚀 开始智能筛选", use_container_width=True, type="primary")
 
     feat = INDUSTRY_FEATURE[industry]
-    st.markdown(f"**当前方案**：行业 = `{industry}` · 风险偏好 = `{risk}` · 数据源 = qstock 行情 / 财务报告 / 时讯情感（glm-4-flash 分类）")
+    st.markdown(f"**当前方案**：行业 = `{industry}` · 风险偏好 = `{risk}` · 数据源 = 东方财富实时行情（push2 报价 + 日K 技术指标） / 财务与情绪为建模特征")
 
     if run:
         pool = CANDIDATES[industry]
+        all_codes = sorted({c["code"] for c in pool} | {s["code"] for s in STOCKS[industry]})
+
+        # 📡 实时行情接入（东方财富 push2；网络失败则回退内置演示数据）
+        with st.status("📡 **实时行情获取** · 拉取东方财富实时报价与日K…", expanded=True) as s:
+            rt = fetch_realtime(all_codes)
+            klines = {code: fetch_kline(code, 120) for code in all_codes}
+            ok = sum(1 for c in all_codes if c in rt)
+            if ok:
+                st.success(f"✅ 已获取 {ok}/{len(all_codes)} 只标的实时行情（最新价 / 涨跌幅 / 总市值），技术面（MA/MACD）由真实日K计算。")
+            else:
+                st.warning("⚠️ 实时行情获取失败（网络受限，常见于境外部署节点），已回退至内置演示数据。")
+            s.update(label="📡 **实时行情获取** · 完成", state="complete")
 
         with st.status("🧭 **Screen Agent** · 正在解析投资意图…", expanded=True) as s:
             time.sleep(0.7)
@@ -1181,16 +1337,28 @@ def page_screen():
             time.sleep(0.9)
             t1, t2, t3, t4 = st.tabs(["💰 基本面特征", "📈 技术面特征", "💬 情绪面特征（FinBERT）", "🏭 行业面特征"])
             with t1:
-                st.dataframe(pd.DataFrame([{"股票": c["name"], "市盈率PE": c["pe"], "市净率PB": c["pb"],
-                                            "ROE(%)": c["roe"], "营收增速(%)": c["rev"]} for c in pool]),
-                             use_container_width=True, hide_index=True)
-                st.caption("数据来源：qstock 财务报表接口 · 筛选逻辑：低估值 + 高 ROE + 稳定增长")
+                fund_rows = []
+                for c in pool:
+                    info = rt.get(c["code"], {})
+                    fund_rows.append({"股票": c["name"],
+                                      "市盈率PE": info.get("pe", c["pe"]),
+                                      "市净率PB": info.get("pb", c["pb"]),
+                                      "ROE(%)": c["roe"], "营收增速(%)": c["rev"]})
+                st.dataframe(pd.DataFrame(fund_rows), use_container_width=True, hide_index=True)
+                st.caption("数据来源：东方财富实时行情（价格 / 涨跌幅 / 总市值 为实时） · 筛选逻辑：低估值 + 高 ROE + 稳定增长；PE/PB 为静态建模值")
                 render_analysis_block(industry, "fundamental")
             with t2:
-                st.dataframe(pd.DataFrame([{"股票": c["name"], "趋势": c["trend"], "均线形态": c["ma"],
-                                            "波动率": c["vol"], "MACD": c["macd"]} for c in pool]),
-                             use_container_width=True, hide_index=True)
-                st.caption("数据来源：qstock 行情接口 · 筛选逻辑：上升趋势 + 均线多头 + MACD 金叉优先")
+                tech_rows = []
+                for c in pool:
+                    kl = klines.get(c["code"])
+                    if kl is not None and len(kl) >= 60:
+                        t = _compute_tech(kl["close"].tolist())
+                    else:
+                        t = {"trend": c["trend"], "ma": c["ma"], "vol": c["vol"], "macd": c["macd"]}
+                    tech_rows.append({"股票": c["name"], "趋势": t["trend"], "均线形态": t["ma"],
+                                      "波动率": t["vol"], "MACD": t["macd"]})
+                st.dataframe(pd.DataFrame(tech_rows), use_container_width=True, hide_index=True)
+                st.caption("数据来源：东方财富实时日K（MA20/MA60、MACD 由收盘价序列计算） · 筛选逻辑：上升趋势 + 均线多头 + MACD 金叉优先")
                 render_analysis_block(industry, "technical")
             with t3:
                 import plotly.graph_objects as go
@@ -1218,11 +1386,15 @@ def page_screen():
                 render_analysis_block(industry, "industry")
             s.update(label="🧬 **多维特征提取** · 特征合成完毕，送入 LLM 评分", state="complete")
 
+        # 基于真实行情重算综合评分（无真实数据则沿用内置 score）
+        if rt:
+            _screen_score(pool, rt, klines)
+
         with st.status("⚖️ **LLM 综合评分** · 分析师视角打分 → 排序 → TopK 筛选…", expanded=True) as s:
             time.sleep(0.8)
             import plotly.graph_objects as go
             names = [c["name"] for c in pool]
-            scores = [c["score"] for c in pool]
+            scores = [c.get("real_score", c["score"]) for c in pool]
             fig = go.Figure(go.Bar(x=names, y=scores,
                                    marker_color=[GOLD if i < 3 else "#C3CDE4" for i in range(len(pool))],
                                    text=scores, textposition="outside", textfont=dict(color=NAVY, size=13)))
@@ -1247,23 +1419,28 @@ def page_screen():
         cols = st.columns(3)
         for idx, (col, stk) in enumerate(zip(cols, STOCKS[industry])):
             with col:
-                chg_cls = "up" if stk["chg"] >= 0 else "down"
-                sign = "+" if stk["chg"] >= 0 else ""
+                info = rt.get(stk["code"], {}) if rt else {}
+                price = info.get("price", stk["price"])
+                chg = info.get("chg", stk["chg"])
+                pe = info.get("pe", stk["pe"])
+                mv = _fmt_mv(info.get("mv")) if (info.get("mv") is not None) else stk["mv"]
+                chg_cls = "up" if chg >= 0 else "down"
+                sign = "+" if chg >= 0 else ""
                 st.markdown(f"""
                 <div class="stock-card">
                   <div><span class="stock-name">{stk['name']}</span><span class="stock-code">{stk['code']}</span></div>
                   <div style="margin:10px 0 4px 0;">
-                    <span style="font-size:1.65rem;font-weight:900;color:{NAVY};font-family:'Noto Serif SC',serif;">¥{stk['price']:.2f}</span>
-                    <span class="{chg_cls}" style="margin-left:10px;font-size:1.02rem;">{sign}{stk['chg']:.2f}%</span>
+                    <span style="font-size:1.65rem;font-weight:900;color:{NAVY};font-family:'Noto Serif SC',serif;">¥{price:.2f}</span>
+                    <span class="{chg_cls}" style="margin-left:10px;font-size:1.02rem;">{sign}{chg:.2f}%</span>
                   </div>
-                  <div style="font-size:.82rem;color:#7A86A6;">市盈率 {stk['pe']} · 总市值 {stk['mv']}</div>
+                  <div style="font-size:.82rem;color:#7A86A6;">市盈率 {pe} · 总市值 {mv}</div>
                 </div>
                 """, unsafe_allow_html=True)
-                df = make_price_series(stk["price"])
+                df = klines.get(stk["code"]) or make_price_series(price)
                 st.plotly_chart(price_chart(df, stk["name"]), use_container_width=True)
                 with st.expander("📌 推荐理由（分析师视角）"):
                     st.write(reasons[idx])
-        st.caption("💡 侧边栏可切换行业与风险偏好；历史数据与可视化图表支持回溯查看。数据为演示模拟。")
+        st.caption("💡 侧边栏可切换行业与风险偏好；价格 / 涨跌幅 / 总市值 / 走势来自东方财富实时行情，PE/PB 与财务情绪特征为建模演示。")
     else:
         st.markdown('<div class="sec-title">Screen 完整流程</div><div class="sec-sub">用户偏好 → 条件解析 → 股票池构建 → 多维评分 → 排序筛选 → 输出推荐</div>', unsafe_allow_html=True)
         c1, c2 = st.columns(2)
