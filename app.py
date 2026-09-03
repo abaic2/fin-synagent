@@ -710,11 +710,14 @@ DS_MODEL = "deepseek-chat"
 
 
 def _ds_client():
-    """读取 st.secrets 中的 DEEPSEEK_API_KEY，构造 OpenAI 客户端；缺失或异常时返回 None（降级演示模式）。"""
+    """构造 OpenAI 客户端：优先用界面输入的 key（session_state['ds_api_key']），其次 st.secrets['DEEPSEEK_API_KEY']；缺失或异常时返回 None（降级演示模式）。"""
     try:
-        key = st.secrets.get("DEEPSEEK_API_KEY", "")
+        ss_key = (st.session_state.get("ds_api_key", "") or "").strip()
+        sec_key = (st.secrets.get("DEEPSEEK_API_KEY", "") or "").strip()
     except Exception:
-        key = ""
+        ss_key = (st.session_state.get("ds_api_key", "") or "").strip()
+        sec_key = ""
+    key = ss_key or sec_key
     if not key:
         return None
     try:
@@ -874,7 +877,7 @@ def run_workflow(query: str, decomp_level: int, use_real=None):
     kb_tag = "宏观" if rag_key == "default" else rag_key
     rag_ctx = "\n".join(f"【{h['source']} · p{h['page']}】{h['text']}" for h in rag_hits) if rag_hits else "（知识库未加载，以下为通用分析）"
 
-    key_ok = bool(st.secrets.get("DEEPSEEK_API_KEY", "").strip())
+    key_ok = bool((st.session_state.get("ds_api_key", "") or "").strip() or (st.secrets.get("DEEPSEEK_API_KEY", "") or "").strip())
     if use_real is None:
         use_real = (st.session_state.get("app_mode", "real") == "real")
     real = bool(use_real) and key_ok
@@ -882,7 +885,7 @@ def run_workflow(query: str, decomp_level: int, use_real=None):
     st.markdown("##### 🔄 多智能体协同工作流（透明可观测）")
     if not real:
         if use_real and not key_ok:
-            st.warning("⚠️ 已选择「真实模式」但未检测到 DEEPSEEK_API_KEY，已回退演示模式。请在 Streamlit Cloud 的 Secrets 或本地 `.streamlit/secrets.toml` 配置密钥后刷新。")
+            st.warning("⚠️ 已选择「真实模式」但未检测到 API Key，已回退演示模式。请在页面顶部的「🔑 DeepSeek API Key」输入框粘贴有效 Key（或配置 Streamlit Cloud Secrets / 本地 secrets.toml）后刷新。")
         else:
             st.warning("🟠 当前为**演示模式**（内置示例回复）。如需真实 DeepSeek 推理，请在上方切换到「真实模式」并配置 API Key。")
     md = ["##### 🔄 多智能体协同工作流（透明可观测）", ""]
@@ -1017,8 +1020,22 @@ def page_consult():
     </div>
     """, unsafe_allow_html=True)
 
+    # DeepSeek API Key 输入（界面级）：优先于 st.secrets，仅本次会话生效，不留盘
+    with st.expander("🔑 DeepSeek API Key（可选 · 仅本次会话生效）", expanded=False):
+        _key_input = st.text_input(
+            "粘贴你的 DeepSeek API Key（sk-...）",
+            type="password",
+            key="ds_api_key_input",
+            help="留空则用演示模式。Key 仅保存在当前浏览器会话，不写入代码或文件。",
+        )
+        if _key_input and _key_input.strip():
+            st.session_state["ds_api_key"] = _key_input.strip()
+            st.caption("✅ Key 已载入本次会话，可在「真实模式」下调用 DeepSeek。")
+        elif "ds_api_key" in st.session_state:
+            del st.session_state["ds_api_key"]
+
     # 运行模式切换：真实模式（DeepSeek 实时推理）/ 演示模式（内置示例），可在界面手动切换
-    _ds_cfg = bool(st.secrets.get("DEEPSEEK_API_KEY", "").strip())
+    _ds_cfg = bool((st.session_state.get("ds_api_key", "") or "").strip() or (st.secrets.get("DEEPSEEK_API_KEY", "") or "").strip())
     if "app_mode" not in st.session_state:
         st.session_state["app_mode"] = "real" if _ds_cfg else "demo"
     _app_mode = st.radio(
