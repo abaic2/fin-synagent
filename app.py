@@ -1533,10 +1533,10 @@ def _heuristic_sentiment(f: dict):
             "sent_tuple": _to_sent_tuple(label, score)}
 
 
-def _screen_sentiment(pool, industry, risk, rt, klines, allow_real=True, news=None):
+def _screen_sentiment(pool, industry, risk, rt, klines, allow_real=True, comments=None):
     """为候选池每只股票生成情绪面解读（标签+置信度+摘要+三分类元组）。
-    真实模式：1 次 DeepSeek 批量调用，基于真实行情/技术面特征 + 该标的近期相关新闻生成；
-    演示/无 Key：基于真实特征的规则启发式。news 为 {code: [标题,...]} 与该标的严格对应。
+    真实模式：1 次 DeepSeek 批量调用，基于真实行情/技术面特征 + 该标的近期相关股吧评论生成；
+    演示/无 Key：基于真实特征的规则启发式。comments 为 {code: [{title,...},...]} 与该标的严格对应。
     返回 {code: {label, score, summary, sent_tuple}}。"""
     feats = {}
     for c in pool:
@@ -1551,23 +1551,25 @@ def _screen_sentiment(pool, industry, risk, rt, klines, allow_real=True, news=No
         # 安全取值：真实行情 info 优先，缺字段时回退内置 CANDIDATES 数据（演示模式保留）
         _price = info.get("price") if (info and info.get("price") is not None) else c.get("price")
         _pe = info.get("pe") if (info and info.get("pe") is not None) else c.get("pe")
-        _news = (news or {}).get(c["code"], [])[:5] if news else []
+        _cmts = (comments or {}).get(c["code"], [])[:5] if comments else []
+        # 只保留评论文本（标题+摘要），去掉 url/人气等冗余字段，避免提示词膨胀
+        _cmt_txt = [f"{x.get('title','')}｜{x.get('abstract','')}".strip("｜") for x in _cmts]
         feats[c["code"]] = {
             "name": c["name"], "code": c["code"],
             "price": _price, "chg": chg,
             "pe": _pe, "roe": c.get("roe"),
             "trend": trend, "macd": macd,
-            "news": _news,
+            "comments": _cmt_txt,
         }
     if allow_real:
         fb = {code: _heuristic_sentiment(f) for code, f in feats.items()}
         fb_json = json.dumps({k: {"label": v["label"], "score": v["score"], "summary": v["summary"]}
                               for k, v in fb.items()}, ensure_ascii=False)
-        sys_p = ("你是金融情绪分析专家。基于给定 A 股标的的真实行情、技术面特征，以及该标的近期相关新闻标题，"
+        sys_p = ("你是金融情绪分析专家。基于给定 A 股标的的真实行情、技术面特征，以及该标的近期股吧散户评论，"
                  "判断其当前市场情绪（正面/中性/负面），给出 0-1 置信度，并用 1 句话说明依据"
-                 "（结合涨跌幅、趋势、MACD，若有相关新闻则结合新闻）。"
+                 "（结合涨跌幅、趋势、MACD，若有相关评论则结合评论情绪）。"
                  "只输出 JSON，格式：{\"600519\":{\"label\":\"正面\",\"score\":0.82,\"summary\":\"...\"}}，不要多余文字。")
-        user_p = ("行业：" + industry + "；风险偏好：" + risk + "。特征（含各标的 news 字段为该股近期相关新闻标题）："
+        user_p = ("行业：" + industry + "；风险偏好：" + risk + "。特征（含各标的 comments 字段为该股近期股吧评论文本）："
                   + json.dumps(feats, ensure_ascii=False))
         try:
             parsed = json.loads(_ds_text(sys_p, user_p, fb_json, allow_real=True))
@@ -1595,44 +1597,6 @@ def _ts_to_date(ts):
         return ""
 
 
-def fetch_market_news(n: int = 10):
-    """拉取真实财经新闻头条（实时，非硬编码）。优先新浪财经，失败回退东方财富公告。返回 [{title, source, date}]。"""
-    H = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-    try:
-        url = f"https://feed.mix.sina.com.cn/api/roll/get?pageid=153&lid=2515&num={n}&page=1"
-        req = _ur.Request(url, headers=H)
-        with _ur.urlopen(req, timeout=8) as r:
-            d = json.loads(r.read().decode("utf-8"))
-        lst = (d.get("result") or {}).get("data") or []
-        out = []
-        for it in lst:
-            title = it.get("title") or ""
-            if not title:
-                continue
-            ctime = it.get("ctime") or it.get("create_time")
-            out.append({"title": title, "source": it.get("media_name") or it.get("source") or "新浪财经",
-                        "date": _ts_to_date(ctime) if ctime else ""})
-        if out:
-            return out[:n]
-    except Exception:
-        pass
-    try:
-        url = f"https://np-anotice-stock.eastmoney.com/api/security/ann?sr=-1&page_size={n}&page_index=1"
-        req = _ur.Request(url, headers=H)
-        with _ur.urlopen(req, timeout=8) as r:
-            d = json.loads(r.read().decode("utf-8"))
-        lst = (d.get("data") or {}).get("list") or []
-        out = []
-        for it in lst:
-            title = it.get("title") or it.get("title_ch") or ""
-            if not title:
-                continue
-            out.append({"title": title, "source": "东方财富公告", "date": (it.get("notice_date") or "")[:10]})
-        return out[:n]
-    except Exception:
-        return []
-
-
 def _em_code(code: str):
     """600519.SH -> SH600519；000858.SZ -> SZ000858（东方财富个股资讯接口用）。"""
     try:
@@ -1642,11 +1606,84 @@ def _em_code(code: str):
         return code
 
 
-def fetch_stock_news(code: str, n: int = 5):
-    """抓取单只股票的真实相关资讯（新浪财经个股资讯 HTML 优先，回退东方财富个股公告/新闻），
-    返回 [{title, source, date, url}]。内容与传入的 code 严格对应，避免与无关标的混淆。"""
+def _guba_em_comments(num_code: str, n: int = 5, name: str = ""):
+    """东方财富股吧：按股票代码进入该股吧，解析页面内嵌的 article_list JSON，
+    取得该标的的真实散户帖子（标题/正文/作者/时间/人气）。返回 [] 表示本源不可用。
+    两道防「评论与目标股无关」的保障：
+      1) 校验返回的 bar_code 与目标代码一致；
+      2) 相关性排序——标题/正文提及该股名称或代码的帖子优先，置顶的跨吧热帖降权。"""
+    H = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                       "(KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+         "Referer": "https://guba.eastmoney.com/"}
+    try:
+        url = f"https://guba.eastmoney.com/list,{num_code},f.html"
+        req = _ur.Request(url, headers=H)
+        with _ur.urlopen(req, timeout=10) as r:
+            html = r.read().decode("utf-8", "ignore")
+        m = re.search(r"var\s+article_list\s*=\s*(\{.*?\})\s*;", html, re.S)
+        if not m:
+            return []
+        d = json.loads(m.group(1))
+        # 校验 1：确认抓到的确实是这只股票的股吧
+        if str(d.get("bar_code") or "").strip() != str(num_code).strip():
+            return []
+        keys = [k for k in (name, num_code) if k]
+        cands, seen = [], set()
+        for p in (d.get("re") or []):
+            title = re.sub(r"\s+", " ", (p.get("post_title") or "")).strip()
+            content = re.sub(r"\s+", " ", (p.get("post_content") or "")).strip()
+            if not title and not content:
+                continue
+            # 过滤「仅现金标签」的空洞帖（如 $贵州茅台(SH600519)$ 且无正文）
+            bare = re.sub(r"\$[^$]*\$|#[^#]*#", "", title).strip()
+            if len(bare) < 4 and len(content) < 4:
+                continue
+            if not title:
+                title = content[:30] + ("…" if len(content) > 30 else "")
+            if title in seen:  # 同一帖子跨页/分区重复出现时去重
+                continue
+            seen.add(title)
+            # 校验 2：相关性打分（标题命中权重更高）
+            rel = 0
+            if keys:
+                rel += 2 * sum(1 for k in keys if k and k in title)
+                rel += 1 * sum(1 for k in keys if k and k in content)
+            if p.get("post_top_status"):  # 置顶/全局热帖降权
+                rel -= 1
+            pid = p.get("post_id")
+            user = ((p.get("post_user") or {}).get("user_nickname") or "").strip()
+            cands.append((
+                rel, int(p.get("post_click_count") or 0),
+                {
+                    "title": title,
+                    "abstract": content[:70] + ("…" if len(content) > 70 else ""),
+                    "source": ("东方财富股吧·" + user) if user else "东方财富股吧",
+                    "date": (p.get("post_publish_time") or "")[:10],
+                    "url": f"https://guba.eastmoney.com/news,{num_code},{pid}.html" if pid else "",
+                    "hot": f"阅{p.get('post_click_count', 0)} · 评{p.get('post_comment_count', 0)}",
+                },
+            ))
+        # 相关性降序 → 人气降序
+        cands.sort(key=lambda x: (x[0], x[1]), reverse=True)
+        return [c[2] for c in cands[:n]]
+    except Exception:
+        return []
+
+
+def fetch_stock_comments(code: str, name: str = "", n: int = 5):
+    """通过个股关键字（股票代码→股吧）爬取该标的的真实散户评论/讨论。
+    返回 [{title, abstract, source, date, url, hot}]，内容与传入的 code 严格对应，
+    绝不混入无关标的的内容。爬取对象不限于单一站点（东财股吧 → 新浪个股资讯 → 东财公告）。"""
     H = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-    # 主源：新浪财经个股资讯 HTML（境内外可达性更好，且内容按 symbol 严格对应）
+    try:
+        num, mkt = code.split(".")
+    except Exception:
+        return []
+    # 主源：东方财富股吧（按股票代码精确进入该股吧，抓取真实散户帖子，并按个股名称做相关性排序）
+    out = _guba_em_comments(num, n, name)
+    if out:
+        return out
+    # 回退源 1：新浪财经个股资讯（仍按个股 symbol 抓取，非大盘要闻）
     try:
         num, mkt = code.split(".")
         symbol = (mkt.lower() if mkt.lower() in ("sh", "sz") else "sh") + num
@@ -1664,13 +1701,12 @@ def fetch_stock_news(code: str, n: int = 5):
             for dm, href, title in re.findall(pattern, ul, re.S):
                 title = re.sub(r"<[^>]+>", "", title).strip()
                 if title:
-                    out.append({"title": title, "source": "新浪·个股资讯",
-                                "date": dm, "url": href})
+                    out.append({"title": title, "source": "新浪·个股资讯", "date": dm, "url": href})
             if out:
                 return out[:n]
     except Exception:
         pass
-    # 回退源 1：东方财富个股公告（按股票代码精确过滤）
+    # 回退源 2：东方财富个股公告（按股票代码精确过滤）
     try:
         emc = _em_code(code)
         url = (f"https://np-anotice-stock.eastmoney.com/api/security/ann?srctype=share&ann_type=2"
@@ -1686,26 +1722,6 @@ def fetch_stock_news(code: str, n: int = 5):
                 continue
             out.append({"title": t, "source": "东方财富·个股公告", "date":
                         (it.get("notice_date") or it.get("eitime") or "")[:10], "url": ""})
-        if out:
-            return out[:n]
-    except Exception:
-        pass
-    # 回退源 2：东方财富个股新闻
-    try:
-        emc = _em_code(code)
-        url = (f"https://np-listapi.eastmoney.com/comm/web/getNewsByCode?code={emc[2:]}"
-               f"&pageSize={n}&pageIndex=1&type=1&fields=code,title,date,from")
-        req = _ur.Request(url, headers={**H, "Referer": "https://quote.eastmoney.com/"})
-        with _ur.urlopen(req, timeout=4) as r:
-            d = json.loads(r.read().decode("utf-8"))
-        lst = (d.get("data") or {}).get("list") or []
-        out = []
-        for it in lst:
-            t = it.get("title") or ""
-            if not t:
-                continue
-            out.append({"title": t, "source": it.get("from") or "东方财富",
-                        "date": (it.get("date") or "")[:10], "url": ""})
         if out:
             return out[:n]
     except Exception:
@@ -1822,23 +1838,37 @@ def page_screen():
                          use_container_width=True, hide_index=True)
             s.update(label="🏗️ **股票池构建** · 候选池就绪", state="complete")
 
-        # 个股相关资讯（真实模式抓取，按 code 精确对应；演示模式不抓取）
+        # 个股相关评论（真实模式按个股关键字爬取股吧评论，按 code 精确对应；演示模式不抓取）
         stock_news = {}
         if _use_real:
-            with st.status("🌐 **个股相关资讯抓取** · 按标的代码获取真实新闻/公告…", expanded=True) as snews:
-                for c in pool:
-                    try:
-                        stock_news[c["code"]] = fetch_stock_news(c["code"], 5)
-                    except Exception:
-                        stock_news[c["code"]] = []
+            with st.status("🌐 **个股评论抓取** · 按标的代码爬取股吧真实散户评论…", expanded=True) as snews:
+                # 并发抓取各标的股吧评论（候选池已扩至 9 只，串行过慢）
+                try:
+                    from concurrent.futures import ThreadPoolExecutor
+
+                    def _fetch_one(c):
+                        try:
+                            return c["code"], fetch_stock_comments(c["code"], c.get("name", ""), 5)
+                        except Exception:
+                            return c["code"], []
+
+                    with ThreadPoolExecutor(max_workers=min(9, max(1, len(pool)))) as ex:
+                        for _code, _res in ex.map(_fetch_one, pool):
+                            stock_news[_code] = _res
+                except Exception:
+                    for c in pool:
+                        try:
+                            stock_news[c["code"]] = fetch_stock_comments(c["code"], c.get("name", ""), 5)
+                        except Exception:
+                            stock_news[c["code"]] = []
                 _nn = sum(len(v) for v in stock_news.values())
-                snews.update(label=f"🌐 **个股相关资讯抓取** · 完成（共 {_nn} 条，已绑定到对应标的）", state="complete")
+                snews.update(label=f"🌐 **个股评论抓取** · 完成（共 {_nn} 条，已绑定到对应标的）", state="complete")
 
         with st.status("🧬 **多维特征提取** · 基本面 / 技术面 / 情绪面 / 行业面 → 特征合成…", expanded=True) as s:
             time.sleep(0.9)
-            # 情绪面：真实模式下由 DeepSeek 基于实时行情/技术面 + 该标的近期相关新闻生成；演示模式用规则启发式
+            # 情绪面：真实模式下由 DeepSeek 基于实时行情/技术面 + 该标的近期股吧评论生成；演示模式用规则启发式
             sent_res = _screen_sentiment(pool, industry, risk, rt, klines, allow_real=_use_real,
-                                         news=stock_news if _use_real else None)
+                                         comments=stock_news if _use_real else None)
             for c in pool:
                 c["sent"] = sent_res[c["code"]]["sent_tuple"]
             t1, t2, t3, t4 = st.tabs(["💰 基本面特征", "📈 技术面特征", "💬 情绪面特征（FinBERT）", "🏭 行业面特征"])
@@ -1894,11 +1924,11 @@ def page_screen():
                     f"<th style='padding:4px 10px;'>情绪 / 置信度</th><th style='padding:4px 10px;'>解读依据</th></tr></thead>"
                     f"<tbody>{_rows}</tbody></table>",
                     unsafe_allow_html=True)
-                st.caption("↑ 情绪研判基于实时涨跌幅、趋势、MACD" + ("，以及该标的近期相关新闻" if _use_real else "") + "等字段" + ("，由 DeepSeek 推理生成" if _use_real else "（演示模式为规则启发式）") + "。")
-                # 个股相关资讯：实时抓取、按标的代码严格对应（解决此前"抓取评论与目标股无关"的问题）
-                with st.expander("📰 个股相关资讯（真实抓取 · 按标的分组 · 情绪标注）", expanded=False):
+                st.caption("↑ 情绪研判基于实时涨跌幅、趋势、MACD" + ("，以及该标的近期股吧散户评论" if _use_real else "") + "等字段" + ("，由 DeepSeek 推理生成" if _use_real else "（演示模式为规则启发式）") + "。")
+                # 个股相关评论：按个股关键字（代码→股吧 symbol）实时爬取真实散户评论，严格绑定标的
+                with st.expander("📰 个股相关评论（真实爬取 · 按标的分组 · 情绪标注）", expanded=False):
                     if not _use_real:
-                        st.info("🟠 演示模式未抓取实时资讯。切换到「🟢 真实模式」后可获取各标的自身的真实新闻/公告。")
+                        st.info("🟠 演示模式未抓取实时评论。切换到「🟢 真实模式」后可按各标的代码爬取其股吧真实散户评论。")
                     else:
                         _all_rows = []
                         for c in pool:
@@ -1906,53 +1936,49 @@ def page_screen():
                             if _nws:
                                 _lbls = _label_news([n["title"] for n in _nws], allow_real=_use_real)
                                 for n, (lbl, _) in zip(_nws, _lbls):
-                                    _all_rows.append((c["name"], n["title"], n.get("source", "—"), n.get("date", "—"), lbl, n.get("url", "")))
+                                    _all_rows.append((c["name"], n["title"], n.get("abstract", ""),
+                                                      n.get("source", "—"), n.get("date", "—"),
+                                                      n.get("hot", "—"), lbl, n.get("url", "")))
                             else:
-                                _all_rows.append((c["name"], "（该标的暂无实时新闻/公告）", "—", "—", "—", ""))
+                                _all_rows.append((c["name"], "（该标的暂无实时评论/讨论）", "", "—", "—", "—", "—", ""))
                         if _all_rows:
-                            def _title_cell(tt, url):
-                                if url:
-                                    return f"<a href='{url}' target='_blank' style='color:#3A4566;text-decoration:none;'>🡕 {tt}</a>"
-                                return tt
+                            def _title_cell(tt, ab, url):
+                                head = (f"<a href='{url}' target='_blank' style='color:{NAVY};"
+                                        f"text-decoration:none;font-weight:600;'>{tt}</a>"
+                                        if url else f"<b style='color:{NAVY};'>{tt}</b>")
+                                if ab:
+                                    return (head + f"<div style='color:#7A86A6;font-size:.76rem;"
+                                                   f"margin-top:2px;'>{ab}</div>")
+                                return head
                             _nrows = "".join(
-                                f"<tr><td style='padding:3px 8px;color:{NAVY};font-weight:600;white-space:nowrap;'>{nm}</td>"
-                                f"<td style='padding:3px 8px;'>" + _title_cell(tt, uu) + "</td>"
-                                f"<td style='padding:3px 8px;color:#7A86A6;white-space:nowrap;'>{src}</td>"
-                                f"<td style='padding:3px 8px;color:#7A86A6;white-space:nowrap;'>{dt}</td>"
-                                f"<td style='padding:3px 8px;font-weight:700;color:{('#E54545' if lbl=='负面' else '#C9A227' if lbl=='正面' else '#8A93A8')};white-space:nowrap;'>{lbl}</td></tr>"
-                                for nm, tt, src, dt, lbl, uu in _all_rows
+                                f"<tr><td style='padding:4px 8px;color:{NAVY};font-weight:600;"
+                                f"white-space:nowrap;vertical-align:top;'>{nm}</td>"
+                                f"<td style='padding:4px 8px;'>" + _title_cell(tt, ab, uu) + "</td>"
+                                f"<td style='padding:4px 8px;color:#7A86A6;white-space:nowrap;"
+                                f"vertical-align:top;'>{src}</td>"
+                                f"<td style='padding:4px 8px;color:#7A86A6;white-space:nowrap;"
+                                f"vertical-align:top;'>{dt}</td>"
+                                f"<td style='padding:4px 8px;color:#7A86A6;white-space:nowrap;"
+                                f"vertical-align:top;'>{ht}</td>"
+                                f"<td style='padding:4px 8px;font-weight:700;color:"
+                                f"{('#E54545' if lbl=='负面' else '#C9A227' if lbl=='正面' else '#8A93A8')};"
+                                f"white-space:nowrap;vertical-align:top;'>{lbl}</td></tr>"
+                                for nm, tt, ab, src, dt, ht, lbl, uu in _all_rows
                             )
                             st.markdown(
                                 f"<table style='width:100%;font-size:.82rem;border-collapse:collapse;'>"
                                 f"<thead><tr style='color:#7A86A6;text-align:left;'>"
-                                f"<th style='padding:3px 8px;'>标的</th><th style='padding:3px 8px;'>标题（仅限该标的）</th>"
-                                f"<th style='padding:3px 8px;'>来源</th><th style='padding:3px 8px;'>日期</th>"
+                                f"<th style='padding:3px 8px;'>标的</th><th style='padding:3px 8px;'>评论（仅限该标的）</th>"
+                                f"<th style='padding:3px 8px;'>作者/来源</th><th style='padding:3px 8px;'>日期</th>"
+                                f"<th style='padding:3px 8px;'>人气</th>"
                                 f"<th style='padding:3px 8px;'>情绪</th></tr></thead>"
                                 f"<tbody>{_nrows}</tbody></table>",
                                 unsafe_allow_html=True)
-                            st.caption("↑ 每条资讯均标注所属标的，仅显示该标的自身的真实新闻/公告（新浪个股资讯按 symbol 抓取，东财公告/新闻为回退源）。"
+                            st.caption("↑ 每条评论均标注所属标的，按个股代码（关键字）进入该股票的股吧实时爬取真实散户讨论，"
+                                       "并校验股吧归属，绝不混入无关标的（主源：东方财富股吧；回退：新浪个股资讯 / 东财公告）。"
                                        + (" 情绪由金融词库 + DeepSeek 标注。" if _use_real else " 情绪由金融词库标注。"))
                         else:
-                            st.info("⚠️ 实时资讯抓取失败（网络受限，常见于境外部署节点），已略过；个股情绪解读不受影响。")
-                        # 大盘要闻（市场层面，与具体个股无关，单独标注避免混淆）
-                        _mkt = fetch_market_news(8)
-                        if _mkt:
-                            with st.expander("🗞 大盘要闻（市场层面 · 非个股相关）"):
-                                _mlbls = _label_news([n["title"] for n in _mkt], allow_real=_use_real)
-                                _mrows = "".join(
-                                    f"<tr><td style='padding:3px 8px;'>{n['title']}</td>"
-                                    f"<td style='padding:3px 8px;color:#7A86A6;white-space:nowrap;'>{n['source']}</td>"
-                                    f"<td style='padding:3px 8px;color:#7A86A6;white-space:nowrap;'>{n['date']}</td>"
-                                    f"<td style='padding:3px 8px;font-weight:700;color:{('#E54545' if lbl=='负面' else '#C9A227' if lbl=='正面' else '#8A93A8')};white-space:nowrap;'>{lbl}</td></tr>"
-                                    for n, (lbl, _) in zip(_mkt, _mlbls)
-                                )
-                                st.markdown(
-                                    f"<table style='width:100%;font-size:.82rem;border-collapse:collapse;'>"
-                                    f"<thead><tr style='color:#7A86A6;text-align:left;'><th style='padding:3px 8px;'>标题</th>"
-                                    f"<th style='padding:3px 8px;'>来源</th><th style='padding:3px 8px;'>日期</th><th style='padding:3px 8px;'>情绪</th></tr></thead>"
-                                    f"<tbody>{_mrows}</tbody></table>",
-                                    unsafe_allow_html=True)
-                                st.caption("↑ 以上为市场层面宏观/行业要闻，并非针对上方具体个股，仅供参考。")
+                            st.info("⚠️ 实时评论抓取失败（网络受限，常见于境外部署节点），已略过；个股情绪解读不受影响。")
             with t4:
                 c1, c2 = st.columns(2)
                 with c1:
