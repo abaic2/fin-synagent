@@ -1117,6 +1117,30 @@ def page_consult():
         st.session_state["chat"].append({"role": "assistant", "content": full_md})
 
 # ============================================================== 页面：Screen
+def _screen_analyst_view(industry: str, risk: str, feat: dict, pool: list) -> str:
+    """真实调用 DeepSeek 生成行业分析师观点；无 Key / 异常时回退内置文案。"""
+    fb = feat.get("view", "")
+    sys_p = ("你是一位严谨的证券分析师。基于给定行业的四维特征与候选池数据，用 1-2 句话给出该行业当前的投资视角与配置逻辑。"
+             "语气克制、专业、带数据感；结尾必须注明『以上不构成投资建议』。不要推荐具体买卖点位。")
+    macro = "；".join(feat.get("macro", []))
+    ind = "；".join(feat.get("industry", []))
+    cands = "；".join(f"{c['name']}(PE={c['pe']},ROE={c['roe']}%,营收增速={c['rev']}%,趋势={c['trend']},正面情绪={c['sent'][0]})" for c in pool)
+    user_p = f"行业：{industry}；风险偏好：{risk}。宏观特征：{macro}。行业特征：{ind}。候选池：{cands}"
+    return _ds_text(sys_p, user_p, fb, allow_real=True)
+
+
+def _screen_reason(stk: dict, industry: str, risk: str) -> str:
+    """真实调用 DeepSeek 生成单只个股的推荐理由；无 Key / 异常时回退内置文案。"""
+    fb = stk.get("reason", "")
+    sys_p = ("你是一位严谨的证券分析师。基于给定个股的四维特征，用 1-2 句话说明其入选 Top-3 推荐组合的理由，聚焦基本面与行业地位；"
+             "语气克制专业，结尾注明『以上不构成投资建议』。不给出具体买卖价格。")
+    sent = stk.get("sent", [0, 0, 0])
+    user_p = (f"个股：{stk['name']}({stk['code']})，行业={industry}，风险偏好={risk}；"
+              f"PE={stk['pe']}, PB={stk['pb']}, ROE={stk['roe']}%, 营收增速={stk['rev']}%, "
+              f"趋势={stk['trend']}, 均线={stk['ma']}, MACD={stk['macd']}, 情绪(正/负/中)={sent}")
+    return _ds_text(sys_p, user_p, fb, allow_real=True)
+
+
 def page_screen():
     st.markdown("""
     <div class="hero hero-mini">
@@ -1209,11 +1233,19 @@ def page_screen():
             st.caption("评分 Prompt：You are a senior equity analyst. 综合基本面 / 技术面 / 情绪面 / 行业面四维特征，0-100 打分")
             s.update(label="⚖️ **LLM 综合评分** · Top-3 标的已锁定", state="complete")
 
-        st.info(f"**分析师观点**：{feat['view']}")
+        # 🤖 真实调用 DeepSeek 生成分析师观点与推荐理由（无 Key / 异常时回退内置示例）
+        with st.status("🤖 **DeepSeek 实时推理** · 生成分析师观点与推荐理由…", expanded=True) as s:
+            analyst_view = _screen_analyst_view(industry, risk, feat, pool)
+            reasons = [_screen_reason(stk, industry, risk) for stk in STOCKS[industry]]
+            s.update(label="🤖 **DeepSeek 实时推理** · 观点与理由已生成", state="complete")
+
+        st.info(f"**分析师观点**：{analyst_view}")
+
+        st.caption("💡 上方分析师观点与下方各股推荐理由由 DeepSeek 实时推理生成（无 Key / 异常时回退内置示例）。")
 
         st.markdown("#### 🏆 推荐组合（Top-3）· 已生成推荐解释")
         cols = st.columns(3)
-        for col, stk in zip(cols, STOCKS[industry]):
+        for idx, (col, stk) in enumerate(zip(cols, STOCKS[industry])):
             with col:
                 chg_cls = "up" if stk["chg"] >= 0 else "down"
                 sign = "+" if stk["chg"] >= 0 else ""
@@ -1230,7 +1262,7 @@ def page_screen():
                 df = make_price_series(stk["price"])
                 st.plotly_chart(price_chart(df, stk["name"]), use_container_width=True)
                 with st.expander("📌 推荐理由（分析师视角）"):
-                    st.write(stk["reason"])
+                    st.write(reasons[idx])
         st.caption("💡 侧边栏可切换行业与风险偏好；历史数据与可视化图表支持回溯查看。数据为演示模拟。")
     else:
         st.markdown('<div class="sec-title">Screen 完整流程</div><div class="sec-sub">用户偏好 → 条件解析 → 股票池构建 → 多维评分 → 排序筛选 → 输出推荐</div>', unsafe_allow_html=True)
