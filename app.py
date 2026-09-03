@@ -281,6 +281,13 @@ div[data-testid="stSidebar"] .stButton > button[kind="primary"] {{
   [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) {{ margin-right: 4%; }}
   [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) {{ margin-left: 4%; }}
 }}
+.chat-welcome {{
+  background: linear-gradient(135deg, #EEF4FF, #F7FAFF);
+  border:1px solid #D6E4FB; border-radius:18px;
+  padding:18px 22px; margin:6px 0 16px 0;
+  color:{INK}; font-size:.95rem; line-height:1.7;
+}}
+.chat-welcome b {{ color:{NAVY}; }}
 
 /* ---------- 专有名词解释 ---------- */
 .gloss-grid {{ display:grid; grid-template-columns: repeat(2, 1fr); gap:14px; margin:8px 0 26px 0; }}
@@ -783,6 +790,8 @@ def run_workflow(query: str, decomp_level: int):
     st.markdown("---")
     st.markdown("##### 🔄 多智能体协同工作流（透明可观测）")
 
+    md = ["##### 🔄 多智能体协同工作流（透明可观测）", ""]
+
     with st.status("👔 **Leader 领导智能体** · 正在进行任务拆解…", expanded=True) as s:
         time.sleep(0.9)
         st.write(f"识别问题意图：行业咨询 / 投资建议 · 拆解粒度：**{decomp_level} 级**")
@@ -790,6 +799,13 @@ def run_workflow(query: str, decomp_level: int):
             st.write(f"📌 子任务 {i}：{t}")
         st.write(f"🎯 已分配专家：{'、'.join(script['experts'])}")
         s.update(label="👔 **Leader 领导智能体** · 任务拆解完成，可补充子任务", state="complete")
+    md.append("**👔 Leader 领导智能体** · 任务拆解完成")
+    md.append(f"- 识别问题意图：行业咨询 / 投资建议 · 拆解粒度：**{decomp_level} 级**")
+    for i, t in enumerate(script["subtasks"], 1):
+        md.append(f"- 📌 子任务 {i}：{t}")
+    md.append(f"- 🎯 已分配专家：{'、'.join(script['experts'])}")
+    md.append("")
+
     with st.expander("🙋 人机协同 · 对拆解任务进行补充（可选）"):
         st.text_input("输入您希望补充的分析方向，专家将一并考虑：", key=f"supp_{time.time()}")
 
@@ -808,12 +824,23 @@ def run_workflow(query: str, decomp_level: int):
         else:
             st.warning("知识库 bundle 未加载，已回退至内置示例片段。")
         s.update(label="📚 **知识库检索（RAG）** · 命中高相关片段，已注入专家提示词", state="complete")
+    md.append(f"**📚 知识库检索（RAG）** · 命中高相关片段")
+    md.append(f"- 检索域：`{kb_tag}` collection · 流程：语义段落切分 → 中文向量化（bge 512 维）→ Chroma 持久化 → 查询向量化 → 余弦相似度 Top-K → Prompt 拼接")
+    if rag_hits:
+        for h in rag_hits:
+            md.append(f"- 📄 **{h['source']}** · p{h['page']} · 相似度 **{h['score']:.3f}**")
+    else:
+        md.append("- ⚠️ 知识库 bundle 未加载，已回退至内置示例片段。")
+    md.append("")
 
     with st.status("🎓 **专家智能体（Spark4.0 Ultra）** · 正在基于检索片段生成专业回答…", expanded=True) as s:
         time.sleep(0.8)
         ph = st.empty()
         spark_stream(script["expert_answer"], ph, speed=0.006)
         s.update(label="🎓 **专家智能体（Spark4.0 Ultra）** · 回答生成完毕", state="complete")
+    md.append("**🎓 专家智能体（Spark4.0 Ultra）** · 回答生成完毕")
+    md.append(script["expert_answer"])
+    md.append("")
 
     with st.status("🧐 **评论家智能体** · 正在审查专家回答…", expanded=True) as s:
         time.sleep(0.8)
@@ -822,11 +849,17 @@ def run_workflow(query: str, decomp_level: int):
         c1.button("👍 认同批评意见", key=f"agree_{time.time()}")
         c2.button("✋ 不认同，给出反馈", key=f"disagree_{time.time()}")
         s.update(label="🧐 **评论家智能体** · 批评意见已输出", state="complete")
+    md.append("**🧐 评论家智能体** · 批评意见")
+    md.append(script["critic"])
+    md.append("")
 
     with st.status("✍️ **专家智能体** · 针对批评与追问完善回答…", expanded=True) as s:
         time.sleep(0.7)
         st.write(script["expert_revise"])
         s.update(label="✍️ **专家智能体** · 回答已完善", state="complete")
+    md.append("**✍️ 专家智能体** · 完善回答")
+    md.append(script["expert_revise"])
+    md.append("")
 
     with st.status("🔎 **搜索与求证智能体** · 正在联网检索并核验真实性…", expanded=True) as s:
         time.sleep(0.9)
@@ -834,13 +867,22 @@ def run_workflow(query: str, decomp_level: int):
         for src in script["verify"]:
             st.markdown(f'<div class="src">📄 {src}</div>', unsafe_allow_html=True)
         s.update(label="🔎 **搜索与求证智能体** · 验证通过 · 信息可溯源", state="complete")
+    md.append("**🔎 搜索与求证智能体** · 验证通过 · 信息可溯源")
+    md.append("已检索知识库与互联网，交叉验证关键数据，未发现幻觉内容。信息源如下：")
+    for src in script["verify"]:
+        md.append(f"- 📄 {src}")
+    md.append("")
 
     with st.status("📋 **总结领导** · 正在汇总全部信息…", expanded=True) as s:
         time.sleep(0.6)
         s.update(label="📋 **总结领导** · 最终建议", state="complete")
     st.success(script["summary"])
     st.caption("💡 您可以继续追问（如：现在市场看好吗？短期还是长期持有？），系统将结合上下文持续回答。")
-    return script["summary"]
+    md.append("**📋 总结领导** · 最终建议")
+    md.append(script["summary"])
+    md.append("")
+    md.append("💡 您可以继续追问（如：现在市场看好吗？短期还是长期持有？），系统将结合上下文持续回答。")
+    return "\n".join(md)
 
 
 def page_consult():
@@ -862,44 +904,56 @@ def page_consult():
     if "chat" not in st.session_state:
         st.session_state["chat"] = []
 
-    # 居中的咨询面板：输入框 + 引导词 + 任务分解程度，减少两侧空白
-    _, center_col, _ = st.columns([1, 2, 1])
-    with center_col:
-        st.markdown("<div style='font-weight:600;color:#0D1B3E;margin-bottom:8px;'>🧭 引导词快速提问</div>", unsafe_allow_html=True)
+    # 任务设置（拆解粒度）置于顶部折叠区，问答前可随时调整
+    with st.expander("⚙️ 任务设置 · 任务分解程度", expanded=False):
+        decomp_level = st.slider("拆解粒度（人机协同选项）", 1, 5, 3, label_visibility="collapsed")
+        st.caption("粒度越高，子任务越细，专家注意力越集中。")
+
+    chat_empty = (len(st.session_state["chat"]) == 0)
+    pending = ("pending_query" in st.session_state)
+
+    # 空状态：欢迎语 + 引导词，避免大段空白；对话中：引导词折叠常驻
+    if chat_empty and not pending:
+        st.markdown("""
+        <div class="chat-welcome">
+          👋 你好，我是 <b>Fin 智能投顾助手</b>。我可以基于多智能体协同框架，给出带检索溯源与可追溯思维链的投资分析。试着问问我吧：
+        </div>
+        """, unsafe_allow_html=True)
+        st.markdown("**🧭 你可以这样问：**", unsafe_allow_html=True)
         gcols = st.columns(2)
         for idx, gp in enumerate(GUIDE_PROMPTS):
             with gcols[idx % 2]:
                 if st.button(gp, key=f"guide_{gp}", use_container_width=True):
                     st.session_state["pending_query"] = gp
+    elif not chat_empty:
+        with st.expander("🧭 引导词快速提问", expanded=False):
+            gcols = st.columns(2)
+            for idx, gp in enumerate(GUIDE_PROMPTS):
+                with gcols[idx % 2]:
+                    if st.button(gp, key=f"guide_{gp}", use_container_width=True):
+                        st.session_state["pending_query"] = gp
 
-        with st.form(key="consult_form", clear_on_submit=True):
-            query = st.text_input(
-                "投资咨询问题",
-                placeholder="请输入您的投资咨询问题，例如：白酒行业最近行情如何？",
-                label_visibility="collapsed",
-                key="consult_query_input"
-            )
-            submitted = st.form_submit_button("🚀 发送", use_container_width=True, type="primary")
+    # 聊天记录（全宽，用户右 / 助手左）
+    for msg in st.session_state["chat"]:
+        role = msg["role"]
+        with st.chat_message(role, avatar=("user" if role == "user" else "assistant")):
+            st.markdown(msg["content"], unsafe_allow_html=True)
 
-        st.markdown("<div style='font-weight:600;color:#0D1B3E;margin:10px 0 6px 0;'>⚙️ 任务分解程度</div>", unsafe_allow_html=True)
-        decomp_level = st.slider("拆解粒度（人机协同选项）", 1, 5, 3, label_visibility="collapsed")
-        st.caption("粒度越高，子任务越细，专家注意力越集中。")
-
-    # 引导词点击：直接作为 query 发送（不回显到输入框，与原 chat_input 行为一致）
+    # 引导词点击：作为 query 发送（不回显，与原 chat_input 行为一致）
+    query = None
     if "pending_query" in st.session_state:
         query = st.session_state.pop("pending_query")
 
-    for msg in st.session_state["chat"]:
-        with st.chat_message(msg["role"], avatar="🧑‍💼" if msg["role"] == "user" else "🚩"):
-            st.markdown(msg["content"])
+    # 底部输入框（聊天式，固定底部，全宽）
+    q = st.chat_input("请输入您的投资咨询问题，例如：白酒行业最近行情如何？")
+    if q:
+        query = q
 
     if query:
         st.session_state["chat"].append({"role": "user", "content": query})
-        with st.chat_message("user", avatar="🧑‍💼"):
-            st.markdown(query)
-        with st.chat_message("assistant", avatar="🚩"):
-            summary = run_workflow(query, decomp_level)
-        st.session_state["chat"].append({"role": "assistant", "content": summary})
+        with st.chat_message("assistant", avatar="assistant"):
+            full_md = run_workflow(query, decomp_level)
+        st.session_state["chat"].append({"role": "assistant", "content": full_md})
 
 # ============================================================== 页面：Screen
 def page_screen():
