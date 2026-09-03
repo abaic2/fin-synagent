@@ -1771,8 +1771,8 @@ def page_tech_base():
 # 导航分组（按受众）：产品体验 / 技术底座 / 附录参考
 NAV_GROUPS = [
     ("产品体验", ["首页", "智能咨询", "智能荐股"], ["house-door", "chat-square-text", "graph-up-arrow"]),
-    ("技术底座", ["技术底座", "技能中心"], ["cpu", "boxes"]),
-    ("附录参考", ["专有名词解释", "面试建议"], ["book", "mic"]),
+    ("技术底座", ["技术底座", "技能中心"], ["cpu", "puzzle"]),
+    ("附录参考", ["专有名词解释", "面试建议"], ["book", "chat-dots"]),
 ]
 
 def _select_nav(page):
@@ -1789,7 +1789,7 @@ PAGES = {
     "专有名词解释": page_glossary,
     "技能中心": page_skills,
 }
-NAV_ICONS = ["house-door", "chat-square-text", "graph-up-arrow", "cpu", "mic", "book", "boxes"]
+NAV_ICONS = ["house-door", "chat-square-text", "graph-up-arrow", "cpu", "chat-dots", "book", "puzzle"]
 
 with st.sidebar:
     st.markdown("""
