@@ -1662,7 +1662,8 @@ def page_screen():
                   <div style="font-size:.82rem;color:#7A86A6;">市盈率 {pe} · 总市值 {mv}</div>
                 </div>
                 """, unsafe_allow_html=True)
-                df = klines.get(stk["code"]) or make_price_series(price)
+                _kl = klines.get(stk["code"]) if klines else None
+                df = _kl if _kl is not None else make_price_series(price)
                 st.plotly_chart(price_chart(df, stk["name"]), use_container_width=True)
                 with st.expander("📌 推荐理由（分析师视角）"):
                     st.write(reasons[idx])
