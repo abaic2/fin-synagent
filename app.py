@@ -724,8 +724,10 @@ def _ds_client():
         return None
 
 
-def _ds_text(system: str, user: str, fallback: str) -> str:
-    """非流式调用 DeepSeek；缺密钥或异常时返回 fallback 文本。"""
+def _ds_text(system: str, user: str, fallback: str, allow_real: bool = True) -> str:
+    """非流式调用 DeepSeek；缺密钥/异常/allow_real=False 时返回 fallback 文本。"""
+    if not allow_real:
+        return fallback
     client = _ds_client()
     if client is None:
         return fallback
@@ -742,8 +744,11 @@ def _ds_text(system: str, user: str, fallback: str) -> str:
         return fallback
 
 
-def _ds_stream_into(ph, system: str, user: str, fallback: str) -> str:
-    """流式调用 DeepSeek，逐块渲染到 ph（打字机效果）；缺密钥或异常时回退 fallback。"""
+def _ds_stream_into(ph, system: str, user: str, fallback: str, allow_real: bool = True) -> str:
+    """流式调用 DeepSeek，逐块渲染到 ph（打字机效果）；缺密钥/异常/allow_real=False 时回退 fallback。"""
+    if not allow_real:
+        ph.markdown(f'<div class="gen-box">{fallback}</div>', unsafe_allow_html=True)
+        return fallback
     client = _ds_client()
     if client is None:
         ph.markdown(f'<div class="gen-box">{fallback}</div>', unsafe_allow_html=True)
@@ -862,21 +867,27 @@ def page_home():
     """, unsafe_allow_html=True)
 
 # ============================================================== 页面：Consult
-def run_workflow(query: str, decomp_level: int):
+def run_workflow(query: str, decomp_level: int, use_real=None):
     script = match_script(query)
     rag_key = next((k for k in ["白酒", "红利", "贵金属"] if k in query), "default")
     rag_hits = get_rag_hits(rag_key, query)
     kb_tag = "宏观" if rag_key == "default" else rag_key
     rag_ctx = "\n".join(f"【{h['source']} · p{h['page']}】{h['text']}" for h in rag_hits) if rag_hits else "（知识库未加载，以下为通用分析）"
 
-    ds_on = _ds_client() is not None
+    key_ok = bool(st.secrets.get("DEEPSEEK_API_KEY", "").strip())
+    if use_real is None:
+        use_real = (st.session_state.get("app_mode", "real") == "real")
+    real = bool(use_real) and key_ok
     st.markdown("---")
     st.markdown("##### 🔄 多智能体协同工作流（透明可观测）")
-    if not ds_on:
-        st.warning("⚠️ 未检测到 DEEPSEEK_API_KEY，当前为**演示模式**（内置示例回复）。在 Streamlit Cloud 的 Secrets 或本地 `.streamlit/secrets.toml` 配置密钥后，将自动切换为真实 DeepSeek 推理。")
+    if not real:
+        if use_real and not key_ok:
+            st.warning("⚠️ 已选择「真实模式」但未检测到 DEEPSEEK_API_KEY，已回退演示模式。请在 Streamlit Cloud 的 Secrets 或本地 `.streamlit/secrets.toml` 配置密钥后刷新。")
+        else:
+            st.warning("🟠 当前为**演示模式**（内置示例回复）。如需真实 DeepSeek 推理，请在上方切换到「真实模式」并配置 API Key。")
     md = ["##### 🔄 多智能体协同工作流（透明可观测）", ""]
-    if not ds_on:
-        md.append("> ⚠️ 演示模式：未配置 DEEPSEEK_API_KEY，以下为内置示例回复。")
+    if not real:
+        md.append("> " + ("⚠️ 已选真实模式但未配置 Key，已回退演示。" if (use_real and not key_ok) else "🟠 演示模式：以下为内置示例回复。"))
         md.append("")
 
     # 1) Leader 领导智能体：任务拆解
@@ -887,6 +898,7 @@ def run_workflow(query: str, decomp_level: int):
             "请只输出纯文本 Markdown 列表：每行一个「- 子任务：<名称>」，最后一行「- 分配专家：<专家名>」。不要添加额外解释。",
             f"用户问题：{query}\n拆解粒度：{decomp_level} 级（粒度越高，子任务越细）。请给出子任务列表与分配的专家。",
             leader_fb,
+            allow_real=real,
         )
         st.markdown(leader)
         s.update(label="👔 **Leader 领导智能体** · 任务拆解完成，可补充子任务", state="complete")
@@ -926,6 +938,7 @@ def run_workflow(query: str, decomp_level: int):
             "要求：使用 Markdown，分点论述，关键结论加粗，必要时给出风险提示。语言为中文。",
             f"用户问题：{query}\n\n【知识库检索片段】\n{rag_ctx}\n\n请基于以上信息给出专业回答。",
             script["expert_answer"],
+            allow_real=real,
         )
         s.update(label="🎓 **专家智能体（DeepSeek-Chat）** · 回答生成完毕", state="complete")
     md.append("**🎓 专家智能体（DeepSeek-Chat）** · 回答生成完毕")
@@ -938,6 +951,7 @@ def run_workflow(query: str, decomp_level: int):
             "你是 Fin 智能投顾系统的评论家智能体。请审查专家回答，指出遗漏、逻辑漏洞、数据存疑之处，并给出改进建议。用中文 Markdown 要点输出。",
             f"用户问题：{query}\n\n【专家回答】\n{expert}\n\n请给出批评意见与改进建议。",
             script["critic"],
+            allow_real=real,
         )
         st.markdown(critic)
         c1, c2 = st.columns(2)
@@ -954,6 +968,7 @@ def run_workflow(query: str, decomp_level: int):
             "你是 Fin 智能投顾系统的专家智能体。请根据评论家的批评意见，完善并修订你的回答，输出修订后的完整要点。中文 Markdown。",
             f"用户问题：{query}\n\n【原专家回答】\n{expert}\n\n【评论家意见】\n{critic}\n\n请输出完善后的回答要点。",
             script["expert_revise"],
+            allow_real=real,
         )
         st.markdown(expert_revise)
         s.update(label="✍️ **专家智能体** · 回答已完善", state="complete")
@@ -967,6 +982,7 @@ def run_workflow(query: str, decomp_level: int):
             "你是 Fin 智能投顾系统的搜索与求证智能体。请针对分析中的关键数据与结论，列出可溯源的信息来源（研究报告/数据/新闻），并判断是否可能存在幻觉。中文 Markdown 列表。",
             f"用户问题：{query}\n\n【最终分析要点】\n{expert_revise}\n\n请列出信息源并核验真实性。",
             "已检索知识库与互联网，交叉验证关键数据，未发现幻觉内容。信息源如下：\n" + "\n".join(f"- {src}" for src in script["verify"]),
+            allow_real=real,
         )
         st.markdown(verify)
         s.update(label="🔎 **搜索与求证智能体** · 验证通过 · 信息可溯源", state="complete")
@@ -980,6 +996,7 @@ def run_workflow(query: str, decomp_level: int):
             "你是 Fin 智能投顾系统的总结领导。请基于以上全流程（任务拆解、专家分析、评论家审查、修订、求证），给出最终投资建议与可执行结论。中文 Markdown，简明有力。",
             f"用户问题：{query}\n\n【专家修订回答】\n{expert_revise}\n\n【验证信息源】\n{verify}\n\n请给出最终建议。",
             script["summary"],
+            allow_real=real,
         )
         s.update(label="📋 **总结领导** · 最终建议", state="complete")
     st.success(summary)
@@ -1000,12 +1017,22 @@ def page_consult():
     </div>
     """, unsafe_allow_html=True)
 
-    # 当前模式徽章：根据是否配置了 DeepSeek API Key 实时显示（演示 / 真实）
+    # 运行模式切换：真实模式（DeepSeek 实时推理）/ 演示模式（内置示例），可在界面手动切换
     _ds_cfg = bool(st.secrets.get("DEEPSEEK_API_KEY", "").strip())
-    if _ds_cfg:
+    if "app_mode" not in st.session_state:
+        st.session_state["app_mode"] = "real" if _ds_cfg else "demo"
+    _app_mode = st.radio(
+        "运行模式", ["real", "demo"],
+        format_func=lambda x: "🟢 真实模式（DeepSeek 实时推理）" if x == "real" else "🟠 演示模式（内置示例）",
+        horizontal=True, key="app_mode",
+    )
+    _use_real = (_app_mode == "real")
+    if _use_real and _ds_cfg:
         st.markdown('<div class="mode-badge mode-real">🟢 真实模式 · 接入 DeepSeek 实时推理</div>', unsafe_allow_html=True)
+    elif _use_real and not _ds_cfg:
+        st.markdown('<div class="mode-badge mode-demo">🟠 演示模式 · 已选真实但未配置 Key</div>', unsafe_allow_html=True)
     else:
-        st.markdown('<div class="mode-badge mode-demo">🟠 演示模式 · 内置示例（未配置 API Key）</div>', unsafe_allow_html=True)
+        st.markdown('<div class="mode-badge mode-demo">🟠 演示模式 · 内置示例</div>', unsafe_allow_html=True)
 
     st.markdown("""
     <div style="margin-bottom:14px;">
@@ -1065,7 +1092,7 @@ def page_consult():
     if query:
         st.session_state["chat"].append({"role": "user", "content": query})
         with st.chat_message("assistant", avatar="assistant"):
-            full_md = run_workflow(query, decomp_level)
+            full_md = run_workflow(query, decomp_level, use_real=_use_real)
         st.session_state["chat"].append({"role": "assistant", "content": full_md})
 
 # ============================================================== 页面：Screen
