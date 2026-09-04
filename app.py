@@ -3266,7 +3266,7 @@ def page_rag_kb():
 # 导航分组（按受众）：产品体验 / 技术底座 / 附录参考
 NAV_GROUPS = [
     ("产品体验", ["首页", "智能咨询", "智能荐股"], ["house-door", "chat-square-text", "graph-up-arrow"]),
-    ("技术底座", ["星火大模型", "技术设计", "测试评估", "RAG 知识库", "技能中心"], ["fire", "cpu", "beaker", "book", "puzzle"]),
+    ("技术底座", ["星火大模型", "技术设计", "测试评估", "RAG 知识库", "技能中心"], ["fire", "cpu", "bar-chart", "book", "puzzle"]),
     ("附录参考", ["专有名词解释", "面试建议"], ["book", "chat-dots"]),
 ]
 
@@ -3300,7 +3300,7 @@ PAGES = {
     "专有名词解释": page_glossary,
     "技能中心": page_skills,
 }
-NAV_ICONS = ["house-door", "chat-square-text", "graph-up-arrow", "fire", "cpu", "beaker", "book", "chat-dots", "book", "puzzle"]
+NAV_ICONS = ["house-door", "chat-square-text", "graph-up-arrow", "fire", "cpu", "bar-chart", "book", "chat-dots", "book", "puzzle"]
 
 with st.sidebar:
     st.markdown("""
