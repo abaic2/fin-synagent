@@ -5,6 +5,7 @@ UI 全面升级 + 星火大模型模拟引擎
 还原自《基于多智能体协同的智能投顾设计》/《AIGC》/《创作思路说明》
 """
 import os
+import re
 import json
 import time
 import datetime
