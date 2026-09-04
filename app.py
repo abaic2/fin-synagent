@@ -3029,15 +3029,22 @@ def render_kb():
 
     # 三、RAG 检索评价指标
     st.markdown('<div class="sec-title">RAG 检索评价指标</div><div class="sec-sub">全部指标由 kb_data.json 中真实的 300 条召回片段（60 查询 × Top-5）实时统计得出：余弦相似度来自真实 bge 编码，相关性以「命中来源是否属于该查询所属行业集合（即路由是否正确）」为代理判定，据此验证多集合 RAG 的路由正确性与片段相关性</div>', unsafe_allow_html=True)
-    kpis = [
+    _sim_mean = float(eval_overall.get("sim_dist", {}).get("top5", {}).get("mean", 0) or 0)
+    kpis_row1 = [
         (f'{eval_overall.get("recall@5", 0):.1%}', "Recall@5（行业路由）"),
         (f'{eval_overall.get("mrr", 0):.3f}', "MRR 平均倒数排名"),
         (f'{eval_overall.get("ndcg@5", 0):.3f}', "NDCG@5"),
         (f'{eval_overall.get("purity@5", 0):.1%}', "行业纯度@5"),
+    ]
+    kpis_row2 = [
         (f'{eval_overall.get("source_coverage_top5", 0):.2f}', "Top-5 来源覆盖数"),
+        (f'{_sim_mean:.3f}', "Top-5 平均余弦相似度"),
         (f'{_n(n_samples)}', "检索样本总数"),
     ]
-    for col, (v, k) in zip(st.columns(6), kpis):
+    for col, (v, k) in zip(st.columns(4), kpis_row1):
+        with col:
+            st.markdown(f'<div class="kpi"><div class="v">{v}</div><div class="k">{k}</div></div>', unsafe_allow_html=True)
+    for col, (v, k) in zip(st.columns(3), kpis_row2):
         with col:
             st.markdown(f'<div class="kpi"><div class="v">{v}</div><div class="k">{k}</div></div>', unsafe_allow_html=True)
 
@@ -3047,51 +3054,42 @@ def render_kb():
     _cov = eval_overall.get("source_coverage_top5", 0) or 0
     _mrr = eval_overall.get("mrr", 0) or 0
     _mrr_rank = (1.0 / _mrr) if _mrr > 1e-9 else float("inf")
-    metric_rows = [
-        {
-            "指标": "Recall@5（行业路由）",
-            "含义": "返回的 Top-5 片段中，命中来源属于「查询所属行业集合」的比例；即多集合 RAG 的路由正确性代理",
-            "取值": "0 ~ 1（越高越好）",
-            "当前值与解读": f'= {eval_overall.get("recall@5",0):.1%}：应召回的相关 chunk 里有 {eval_overall.get("recall@5",0):.0%} 落在 Top-5，越接近 100% 相关信息越不会漏在第一屏之外。',
-        },
-        {
-            "指标": "MRR（平均倒数排名）",
-            "含义": "每个查询「第一个相关结果排名 r」的倒数 1/r 取平均，衡量最相关的那条排得多靠前",
-            "取值": "0 ~ 1（越高越好）",
-            "当前值与解读": f'= {_mrr:.3f}：MRR=1 表示每次查询首个相关结果都排第 1；当前平均约排在第 {_mrr_rank:.1f} 位。',
-        },
-        {
-            "指标": "NDCG@5",
-            "含义": "归一化折扣累计增益，越靠前、相关性越高的结果得分越高（惩罚把相关内容排到后面）",
-            "取值": "0 ~ 1（越高越好）",
-            "当前值与解读": f'= {eval_overall.get("ndcg@5",0):.3f}：综合了「相关程度」与「排名位置」，越接近 1 高相关内容越集中在最前。',
-        },
-        {
-            "指标": "行业纯度@5（Purity@5）",
-            "含义": "Top-5 中属于「正确行业来源」的比例，衡量多集合 RAG 的路由是否串域",
-            "取值": "0 ~ 1（越高越好）",
-            "当前值与解读": f'= {eval_overall.get("purity@5",0):.1%}：{(1-eval_overall.get("purity@5",0)):.0%} 为跨域串扰；越接近 100% 路由越干净。',
-        },
-        {
-            "指标": "Top-5 来源覆盖数",
-            "含义": "单个查询 Top-5 平均覆盖的不同权威来源（PDF）数量，反映证据多样性",
-            "取值": "1 ~ 5（一般）",
-            "当前值与解读": f'= {_cov:.2f}：平均每个答案证据来自 {_cov:.1f} 个不同文档，越高越不易受单一来源偏差影响。',
-        },
-        {
-            "指标": "检索样本总数",
-            "含义": "本次评测覆盖的真实召回片段条数（= 计算上述指标的样本量）",
-            "取值": "整数",
-            "当前值与解读": f'= {_n(n_samples)} 条（4 行业 × 15 查询 × Top-5），是上表所有指标的统计基数。',
-        },
-        {
-            "指标": "余弦相似度（样本浏览器中的「相似度」）",
-            "含义": "query 与该 chunk 经 bge 编码后向量的余弦相似度，语义越近分数越高",
-            "取值": "约 -1 ~ 1（中文语义向量常见 0.3 ~ 0.9）",
-            "当前值与解读": f'Top-5 均值 {_sd_top5.get("mean")} / 中位 {_sd_top5.get("median")}：样本浏览器里每条「相似度 0.xxx」即该值，越接近 1 语义越贴合。',
-        },
+    _sim_median = float(_sd_top5.get("median", 0) or 0)
+    _metric_table_rows = [
+        ("Recall@5（行业路由）", "返回的 Top-5 片段中，命中来源属于「查询所属行业集合」的比例；即多集合 RAG 的路由正确性代理", "0 ~ 1（越高越好）",
+         f'= {eval_overall.get("recall@5",0):.1%}：应召回的相关 chunk 里有 {eval_overall.get("recall@5",0):.0%} 落在 Top-5，越接近 100% 相关信息越不会漏在第一屏之外。'),
+        ("MRR（平均倒数排名）", "每个查询「第一个相关结果排名 r」的倒数 1/r 取平均，衡量最相关的那条排得多靠前", "0 ~ 1（越高越好）",
+         f'= {_mrr:.3f}：MRR=1 表示每次查询首个相关结果都排第 1；当前平均约排在第 {_mrr_rank:.1f} 位。'),
+        ("NDCG@5", "归一化折扣累计增益，越靠前、相关性越高的结果得分越高（惩罚把相关内容排到后面）", "0 ~ 1（越高越好）",
+         f'= {eval_overall.get("ndcg@5",0):.3f}：综合了「相关程度」与「排名位置」，越接近 1 高相关内容越集中在最前。'),
+        ("行业纯度@5（Purity@5）", "Top-5 中属于「正确行业来源」的比例，衡量多集合 RAG 的路由是否串域", "0 ~ 1（越高越好）",
+         f'= {eval_overall.get("purity@5",0):.1%}：{(1-eval_overall.get("purity@5",0)):.0%} 为跨域串扰；越接近 100% 路由越干净。'),
+        ("Top-5 来源覆盖数", "单个查询 Top-5 平均覆盖的不同权威来源（PDF）数量，反映证据多样性", "1 ~ 5（一般）",
+         f'= {_cov:.2f}：平均每个答案证据来自 {_cov:.1f} 个不同文档，越高越不易受单一来源偏差影响。'),
+        ("检索样本总数", "本次评测覆盖的真实召回片段条数（= 计算上述指标的样本量）", "整数",
+         f'= {_n(n_samples)} 条（4 行业 × 15 查询 × Top-5），是上表所有指标的统计基数。'),
+        ("余弦相似度", "query 与该 chunk 经 bge 编码后向量的余弦相似度，样本浏览器中的「相似度」即该值；语义越近分数越高", "约 -1 ~ 1（中文语义向量常见 0.3 ~ 0.9）",
+         f'Top-5 均值 {_sim_mean:.3f} / 中位 {_sim_median:.3f}：越接近 1 代表片段与问题语义越贴合。'),
     ]
-    st.dataframe(pd.DataFrame(metric_rows), use_container_width=True, hide_index=True)
+    _metric_rows_html = "".join(
+        f"<tr><td>{m}</td><td>{d}</td><td>{r}</td><td>{c}</td></tr>"
+        for m, d, r, c in _metric_table_rows
+    )
+    st.markdown(f"""
+    <style>
+    .metric-table {{ width:100%; border-collapse:separate; border-spacing:0 10px; font-size:.92rem; }}
+    .metric-table th {{ background: linear-gradient(90deg, {NAVY}, {NAVY2}); color:#fff; padding:12px 14px; text-align:left; }}
+    .metric-table th:first-child {{ border-radius:10px 0 0 0; }}
+    .metric-table th:last-child {{ border-radius:0 10px 0 0; }}
+    .metric-table td {{ background:#fff; padding:12px 14px; border-top:1px solid #E4E9F4; border-bottom:1px solid #E4E9F4; vertical-align:top; color:{INK}; line-height:1.55; }}
+    .metric-table td:first-child {{ border-left:1px solid #E4E9F4; border-radius:10px 0 0 10px; font-weight:700; color:{NAVY}; white-space:nowrap; }}
+    .metric-table td:last-child {{ border-right:1px solid #E4E9F4; border-radius:0 10px 10px 0; }}
+    </style>
+    <table class="metric-table">
+      <thead><tr><th>指标</th><th>含义</th><th>取值</th><th>当前值与解读</th></tr></thead>
+      <tbody>{_metric_rows_html}</tbody>
+    </table>
+    """, unsafe_allow_html=True)
     st.caption("读法示例：Recall@5=100% → Top-5 片段全部命中正确行业集合（路由零串扰）；MRR=1.000 → 每个查询首个命中均排第 1；余弦相似度=0.75 → 该片段与问题语义高度接近、非边缘相关。本评测集所有 300 条命中均来自查询所属行业，故路由类指标为满值，差异主要体现在「相似度分布」与「来源覆盖数」上。分行业表中「查询数」即该行业参与评测的代表性查询条数（各 15），「Top5均相似度」即上表余弦相似度的分行业均值。所有数值由真实召回样本实时统计，随查询集与知识库规模变化，仅作系统能力佐证。")
 
     st.markdown('<div class="sec-title" style="font-size:1.1rem;margin-top:26px;">相似度置信度分布（Top-5 命中相似度）</div><div class="sec-sub">横轴为余弦相似度分箱，纵轴为命中数——分布越靠右、峰值越高，代表检索返回段落与查询语义越贴近</div>', unsafe_allow_html=True)
