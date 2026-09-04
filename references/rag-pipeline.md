@@ -1,10 +1,16 @@
-# RAG 全流程详解（离线建库 + 在线查询）
+# RAG 全流程 · 离线建库与在线查询
 
-检索增强生成（Retrieval-Augmented Generation）在本项目中用于「智能咨询」模块：先用行业知识库检索真实资料，再让大模型据此作答并标注来源，从而抑制幻觉、保证可溯源。
+> **文档类型**：技能参考文档（reference）
+> **所属技能**：Fin Synagent · 多智能体协同智能投顾
+> **关联模块**：Consult 智能咨询（知识库检索 RAG 链路）
+> **关联脚本**：`scripts/kb_build/`（extract_markdown / semantic_chunk / embed_store / verify_retrieval）
+> **何时引用**：需要真正落地 RAG 知识库（而非对话模拟）时，按本文件步骤执行
 
----
+## 一、文档用途
 
-## 一、离线建库（Offline）
+检索增强生成（RAG）用于 Consult 模块的「知识库检索」环节：先用行业知识库检索真实资料，再让大模型据此作答并标注来源，从而抑制幻觉、保证可溯源。本文件给出**离线建库 5 步 + 在线查询 5 步**，每步附真实数据/代码/召回样例。
+
+## 二、离线建库（Offline）
 
 > 对应脚本：见 `scripts/kb_build/`（`extract_markdown.py` → `semantic_chunk.py` → `embed_store.py`）。
 
@@ -70,9 +76,7 @@ coll.add(ids=ids, embeddings=embs.tolist(),
 # [OK] 白酒 -> collection 'baijiu': 668 条, 维度 512
 ```
 
----
-
-## 二、在线查询（Online）
+## 三、在线查询（Online）
 
 > 对应脚本：`verify_retrieval.py`；Consul 端由 `app.py` 的 `get_rag_hits()` 路由检索。
 
@@ -120,9 +124,8 @@ LLM 生成答案，输出引用来源，可溯源、抑幻觉。
 短期动销健康。
 ```
 
----
+## 四、关键设计点
 
-## 三、关键设计点
 - **Chunking 策略**：语义切分优于固定长度切分——保留章节上下文，避免把「因」和「果」截断到两块。
 - **Embedding 选型**：bge-small-zh-v1.5 中文场景强、512 维轻量；无星火 API 时的本地等价替代，下游可无缝替换为星火 Embedding。
 - **分行业分库**：4 个 collection 即 4 个知识域，路由检索精度高、可独立更新维护。

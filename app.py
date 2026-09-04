@@ -2510,25 +2510,18 @@ def page_screen():
 def render_spark():
     st.caption("⚠️ 本页面为星火大模型的**模拟演示**：不调用真实 API，生成内容来自内置金融知识库模板，用于还原真实调用链路。")
 
-    st.markdown('<div class="sec-title" style="margin-top:18px;">选择模型版本</div><div class="sec-sub">对应星火 Web API 的 domain 参数</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec-title" style="margin-top:18px;">模型版本（星火 Web API domain 对照）</div><div class="sec-sub">以下为星火大模型各版本对照，演示默认使用 Spark4.0 Ultra 生成回答，无需手动切换</div>', unsafe_allow_html=True)
+    default_model = "Spark4.0 Ultra"
     cols = st.columns(4)
-    if "spark_model" not in st.session_state:
-        st.session_state["spark_model"] = "Spark4.0 Ultra"
     for col, (name, meta) in zip(cols, SPARK_MODELS.items()):
+        is_default = (name == default_model)
         with col:
             st.markdown(f"""
-            <div class="spark-card" style="background:{meta['grad']};">
-              <span class="badge">{meta['badge']}</span>
+            <div class="spark-card" style="background:{meta['grad']};{'box-shadow:0 0 0 2px #4A6FD4 inset;' if is_default else ''}">
+              <span class="badge">{meta['badge']}{' · 默认' if is_default else ''}</span>
               <h4>{name}</h4><p>{meta['desc']}</p>
             </div>""", unsafe_allow_html=True)
-            if st.button(f"{'✅ 当前模型' if st.session_state['spark_model'] == name else '选用 ' + name}",
-                         key=f"tb_spark_pick_{name}", use_container_width=True,
-                         type="primary" if st.session_state["spark_model"] == name else "secondary"):
-                st.session_state["spark_model"] = name
-                # 标记为内部 rerun，避免 sidebar option_menu 在 rerun 时误触发 on_change 跳转页面
-                st.session_state["_suppress_nav"] = True
-                st.rerun()
-    model = st.session_state["spark_model"]
+    model = default_model
 
     st.markdown('<div class="sec-title">参数配置</div><div class="sec-sub">与星火 Web API v4.0 parameter.chat 字段一一对应</div>', unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
