@@ -19,6 +19,8 @@ from streamlit_option_menu import option_menu
 KB_DATA_PATH = os.path.join(os.path.dirname(__file__), "kb_data.json")
 # 技能内置的可运行 Python 脚本目录（随 Demo 一同部署，页面直接读取真实文件内容）
 SCRIPTS_DIR = os.path.join(os.path.dirname(__file__), "scripts")
+# 技能内置的 references 知识文档目录（随 Demo 一同部署，页面可展开渲染并下载）
+REFERENCES_DIR = os.path.join(os.path.dirname(__file__), "references")
 @st.cache_data
 def load_kb_data(version="v1"):
     """加载由 knowledge_base/Chroma 真实检索 + 微调数据集统计生成的 bundle。"""
@@ -3081,9 +3083,39 @@ def page_skills():
       📄 <b>consult-playbook.md</b> — 三行业标准答案、批评与修正文本<br>
       📄 <b>screen-data.md</b> — 股票池、四维数据、LLM 评分与推荐理由<br>
       📄 <b>rag-pipeline.md</b> / <b>finetune-pipeline.md</b> — RAG/微调全流程文档<br>
-      🐍 <b>scripts/kb_build/</b> — 7 个建库与语料下载脚本（见下方代码）
+      🐍 <b>scripts/kb_build/</b> — 7 个建库与语料下载脚本（见下方代码）<br>
+      📂 <b>references/</b> 与 <b>scripts/</b> 均已随 Demo 部署，下方可展开查看并下载
       </p>
     </div>""", unsafe_allow_html=True)
+
+    st.markdown('<div class="sec-title" style="font-size:1.05rem;margin-top:18px;">📄 打包的 references 文档（Markdown · 可展开渲染并下载）</div>', unsafe_allow_html=True)
+    st.caption("以下 5 份文档为 Fin Synagent 技能内置的 references 知识库，已随 Demo 一同部署；展开即可渲染完整 Markdown 内容并一键下载。")
+
+    PACKAGED_REFS = [
+        ("📄", "industry-knowledge.md", "白酒/红利/贵金属行业知识与信源"),
+        ("📄", "consult-playbook.md", "三行业标准答案、批评与修正文本"),
+        ("📄", "screen-data.md", "股票池、四维数据、LLM 评分与推荐理由"),
+        ("📄", "rag-pipeline.md", "RAG 检索增强生成全流程文档"),
+        ("📄", "finetune-pipeline.md", "金融微调数据集 + 微调训练全流程"),
+    ]
+    for _icon, _rel, _desc in PACKAGED_REFS:
+        _fpath = os.path.join(REFERENCES_DIR, _rel)
+        with st.expander(f"{_icon} references/{_rel} · {_desc}"):
+            if os.path.exists(_fpath):
+                with open(_fpath, encoding="utf-8") as _fh:
+                    _doc = _fh.read()
+                _kb = len(_doc.encode("utf-8")) / 1024
+                st.caption(f"{len(_doc.splitlines())} 行 · {_kb:.1f} KB · 完整文档，直接读取自已部署的 .md 文件")
+                st.markdown(_doc)
+                st.download_button(
+                    label=f"⬇️ 下载 {_rel}",
+                    data=_doc,
+                    file_name=_rel,
+                    mime="text/markdown",
+                    key=f"dl_ref_{_rel.replace('.', '_')}",
+                )
+            else:
+                st.warning("该文档未随部署包提供。")
 
     st.markdown('<div class="sec-title" style="font-size:1.05rem;margin-top:18px;">🐍 打包的 Python 脚本（完整源码 · 支持下载）</div>', unsafe_allow_html=True)
     st.caption("以下 7 个脚本为 Fin Synagent 技能内置的真实可运行代码，已随 Demo 一同部署；展开即可查看完整源码并一键下载。")
@@ -3116,7 +3148,7 @@ def page_skills():
             else:
                 st.warning("该脚本未随部署包提供。")
 
-    st.info("📚 **RAG 全流程**的详细步骤与每步真实示例在「知识库」页；**金融微调数据集 + 微调训练全流程**已移至「星火大模型」页（点左侧导航查看）；上方 **7 个工程脚本**均实时读取随 Demo 部署的真实 `.py` 文件，展开可看完整源码并一键下载，与 Fin Synagent 技能内置版本完全一致。")
+    st.info("📚 **RAG 全流程**的详细步骤与每步真实示例在「知识库」页；**金融微调数据集 + 微调训练全流程**已移至「星火大模型」页（点左侧导航查看）；上方 **5 份 references 文档 + 7 个工程脚本**均实时读取随 Demo 部署的真实文件，展开可看完整内容与一键下载，与 Fin Synagent 技能内置版本完全一致。")
 
     st.info("💡 在 WorkBuddy 中可通过对话直接调用：以「Fin Synagent 投顾」身份提问或要求行业分析、荐股，会触发 Fin Synagent 能力版。")
 
