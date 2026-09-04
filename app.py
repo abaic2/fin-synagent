@@ -2177,8 +2177,10 @@ def page_screen():
             import plotly.graph_objects as go
             names = [c["name"] for c in pool]
             scores = [c.get("real_score", c["score"]) for c in pool]
+            # 金色必须对应综合分最高的 Top-3，而不是 pool 固定顺序的前 3 个
+            top3_idx = set(i for i, _ in sorted(enumerate(scores), key=lambda x: x[1], reverse=True)[:3])
             fig = go.Figure(go.Bar(x=names, y=scores,
-                                   marker_color=[GOLD if i < 3 else "#C3CDE4" for i in range(len(pool))],
+                                   marker_color=[GOLD if i in top3_idx else "#C3CDE4" for i in range(len(pool))],
                                    text=scores, textposition="outside", textfont=dict(color=NAVY, size=13)))
             fig.update_layout(**PLOTLY_BASE, height=300, margin=dict(l=10, r=10, t=30, b=10),
                               title=dict(text=f"LLM 综合评分（金色 = Top-3 入选）· 满分 100", font=dict(size=13, color=NAVY)),
