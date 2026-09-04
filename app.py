@@ -1671,9 +1671,57 @@ def _guba_em_comments(num_code: str, n: int = 5, name: str = ""):
         return []
 
 
-def _gnews_keyword(name: str, n: int = 5):
-    """Google News RSS 按个股名称关键词搜索（全球可达，境外部署节点的主力回退源）。
-    返回 [{title, source, date, url}]，每条都因精确命中该股名称关键词而与标的强相关。"""
+def _rss_items(xml: str):
+    """宽容解析 RSS XML，返回 [(title, link, pubDate)]，处理 CDATA 与实体转义。"""
+    from html import unescape
+    out = []
+    for m in re.finditer(r"<item>(.*?)</item>", xml, re.S):
+        blk = m.group(1)
+        tm = re.search(r"<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</title>", blk, re.S)
+        lm = re.search(r"<link>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</link>", blk, re.S)
+        dm = re.search(r"<pubDate>(.*?)</pubDate>", blk, re.S)
+        if tm and tm.group(1).strip():
+            out.append((unescape(tm.group(1)).strip(),
+                        unescape(lm.group(1)).strip() if lm else "",
+                        dm.group(1).strip() if dm else ""))
+    return out
+
+
+def _parse_rss_date(d: str):
+    try:
+        return datetime.datetime.strptime(d[:16].strip(), "%a, %d %b %Y").strftime("%Y-%m-%d")
+    except Exception:
+        return ""
+
+
+def _bing_keyword(name: str, n: int = 5, errs: list = None):
+    """Bing News RSS 按个股名称关键词搜索（全球可达，且对数据中心/云 IP 比 Google 宽容）。
+    返回 [{title, abstract, source, date, url, hot}]，每条都因命中该股名称关键词而强相关。"""
+    if not name:
+        return []
+    try:
+        q = _up.quote(name)
+        url = f"https://www.bing.com/news/search?q={q}&format=rss"
+        req = _ur.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+        with _ur.urlopen(req, timeout=8) as r:
+            xml = r.read().decode("utf-8", "ignore")
+        out = []
+        for t, link, d in _rss_items(xml):
+            out.append({"title": t, "abstract": "", "source": "Bing News·关键词命中",
+                        "date": _parse_rss_date(d), "url": link, "hot": "—"})
+            if len(out) >= n:
+                break
+        if not out and errs is not None:
+            errs.append("Bing: RSS 返回 0 条")
+        return out
+    except Exception as e:
+        if errs is not None:
+            errs.append(f"Bing: {type(e).__name__} {str(e)[:60]}")
+        return []
+
+
+def _gnews_keyword(name: str, n: int = 5, errs: list = None):
+    """Google News RSS 按个股名称关键词搜索（全球可达的回退源）。"""
     if not name:
         return []
     try:
@@ -1683,42 +1731,44 @@ def _gnews_keyword(name: str, n: int = 5):
         req = _ur.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
         with _ur.urlopen(req, timeout=8) as r:
             xml = r.read().decode("utf-8", "ignore")
-        items = re.findall(r"<item><title>(.*?)</title>.*?<pubDate>(.*?)</pubDate>", xml, re.S)
         out = []
-        for t, d in items:
-            t = re.sub(r"\s+", " ", t).strip()
-            if not t:
-                continue
-            try:
-                dt = datetime.datetime.strptime(d[:16].strip(), "%a, %d %b %Y").strftime("%Y-%m-%d")
-            except Exception:
-                dt = ""
+        for t, link, d in _rss_items(xml):
             out.append({"title": t, "abstract": "", "source": "Google News·关键词命中",
-                        "date": dt, "url": "", "hot": "—"})
+                        "date": _parse_rss_date(d), "url": link, "hot": "—"})
             if len(out) >= n:
                 break
+        if not out and errs is not None:
+            errs.append("Google News: RSS 返回 0 条（共享出口 IP 可能被限流）")
         return out
-    except Exception:
+    except Exception as e:
+        if errs is not None:
+            errs.append(f"Google News: {type(e).__name__} {str(e)[:60]}")
         return []
 
 
+# 各标的最近一次抓取的逐源失败诊断（page_screen 0 条时展示，便于远程定位网络问题）
+_COMMENT_DEBUG = {}
+
+
 def fetch_stock_comments(code: str, name: str = "", n: int = 5):
-    """通过个股关键字（股票代码→股吧）爬取该标的的真实散户评论/讨论。
+    """通过个股关键字（股票代码→股吧/关键词）爬取该标的的真实评论/资讯。
     返回 [{title, abstract, source, date, url, hot}]，内容与传入的 code 严格对应，
-    绝不混入无关标的的内容。爬取对象不限于单一站点
-    （东财股吧 → 新浪个股资讯 → Google News 关键词 → 东财公告）。"""
+    绝不混入无关标的的内容。爬取对象不限于单一站点，回退链：
+    东财股吧 → 新浪个股资讯 → Bing News 关键词 → Google News 关键词 → 东财公告。"""
+    errs = _COMMENT_DEBUG.setdefault(code, [])
     H = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     try:
         num, mkt = code.split(".")
     except Exception:
+        errs.append("代码格式无法解析")
         return []
     # 主源：东方财富股吧（按股票代码精确进入该股吧，抓取真实散户帖子，并按个股名称做相关性排序）
     out = _guba_em_comments(num, n, name)
     if out:
         return out
+    errs.append("东财股吧: 无结果（境外节点常被限）")
     # 回退源 1：新浪财经个股资讯（仍按个股 symbol 抓取，非大盘要闻）
     try:
-        num, mkt = code.split(".")
         symbol = (mkt.lower() if mkt.lower() in ("sh", "sz") else "sh") + num
         url = f"https://vip.stock.finance.sina.com.cn/corp/view/vCB_AllNewsStock.php?symbol={symbol}&num={max(n,8)}"
         req = _ur.Request(url, headers={**H, "Referer": "https://finance.sina.com.cn/"})
@@ -1738,13 +1788,18 @@ def fetch_stock_comments(code: str, name: str = "", n: int = 5):
                                 "date": dm, "url": href, "hot": "—"})
             if out:
                 return out[:n]
-    except Exception:
-        pass
-    # 回退源 2：Google News 按个股名称关键词搜索（全球可达，境外部署节点的主力回退）
-    out = _gnews_keyword(name, n)
+        errs.append("新浪: 页面无 datelist（可能被反爬/JS 化）")
+    except Exception as e:
+        errs.append(f"新浪: {type(e).__name__} {str(e)[:60]}")
+    # 回退源 2：Bing News 按个股名称关键词（对云/数据中心 IP 最宽容，境外主力）
+    out = _bing_keyword(name, n, errs)
     if out:
         return out
-    # 回退源 3：东方财富个股公告（按股票代码精确过滤）
+    # 回退源 3：Google News 按个股名称关键词
+    out = _gnews_keyword(name, n, errs)
+    if out:
+        return out
+    # 回退源 4：东方财富个股公告（按股票代码精确过滤）
     try:
         emc = _em_code(code)
         url = (f"https://np-anotice-stock.eastmoney.com/api/security/ann?srctype=share&ann_type=2"
@@ -1758,12 +1813,14 @@ def fetch_stock_comments(code: str, name: str = "", n: int = 5):
             t = it.get("title") or it.get("title_cn") or ""
             if not t:
                 continue
-            out.append({"title": t, "source": "东方财富·个股公告", "date":
-                        (it.get("notice_date") or it.get("eitime") or "")[:10], "url": ""})
+            out.append({"title": t, "abstract": "", "source": "东方财富·个股公告",
+                        "date": (it.get("notice_date") or it.get("eitime") or "")[:10],
+                        "url": "", "hot": "—"})
         if out:
             return out[:n]
-    except Exception:
-        pass
+        errs.append("东财公告: 0 条")
+    except Exception as e:
+        errs.append(f"东财公告: {type(e).__name__} {str(e)[:60]}")
     return []
 
 
@@ -1881,13 +1938,15 @@ def page_screen():
         if _use_real:
             with st.status("🌐 **个股评论抓取** · 按标的代码爬取股吧真实散户评论…", expanded=True) as snews:
                 # 并发抓取各标的股吧评论（候选池已扩至 9 只，串行过慢）
+                _COMMENT_DEBUG.clear()
                 try:
                     from concurrent.futures import ThreadPoolExecutor
 
                     def _fetch_one(c):
                         try:
                             return c["code"], fetch_stock_comments(c["code"], c.get("name", ""), 5)
-                        except Exception:
+                        except Exception as e:
+                            _COMMENT_DEBUG.setdefault(c["code"], []).append(f"未预期异常: {type(e).__name__} {str(e)[:60]}")
                             return c["code"], []
 
                     with ThreadPoolExecutor(max_workers=min(9, max(1, len(pool)))) as ex:
@@ -1901,8 +1960,17 @@ def page_screen():
                             stock_news[c["code"]] = []
                 _nn = sum(len(v) for v in stock_news.values())
                 snews.update(label=(f"🌐 **个股评论抓取** · 完成（共 {_nn} 条，已绑定到对应标的）" if _nn
-                                    else "🌐 **个股评论抓取** · 0 条（股吧/新浪/Google News 多源均未取到，常见于网络受限）"),
+                                    else "🌐 **个股评论抓取** · 0 条（全部回退源均未取到，展开下方诊断可见各源具体失败原因）"),
                              state="complete")
+                if not _nn:
+                    with st.expander("🔍 评论抓取诊断（各标的 · 各源失败原因）", expanded=True):
+                        for c in pool:
+                            reasons = _COMMENT_DEBUG.get(c["code"]) or []
+                            st.write(f"**{c['name']}**（{c['code']}）")
+                            for rmsg in reasons:
+                                st.write(f"- {rmsg}")
+                            if not reasons:
+                                st.write("- （无记录）")
 
         with st.status("🧬 **多维特征提取** · 基本面 / 技术面 / 情绪面 / 行业面 → 特征合成…", expanded=True) as s:
             time.sleep(0.9)
