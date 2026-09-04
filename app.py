@@ -1132,7 +1132,8 @@ def _tech_score(close_list):
 
 
 def _screen_score(pool, rt, klines):
-    """基于真实行情（涨跌幅 + 技术面）重算综合评分 0-100，写回 c['real_score'] 与分项 c['score_break']。"""
+    """基于真实行情（涨跌幅 + 技术面）重算综合评分 0-100，写回 c['real_score'] 与分项 c['score_break']。
+    情绪分项用情绪分析带符号得分(sent_score, -1~1)映射：看多>50、中性=50、看空<50；无 sent_score 时回退正面占比口径。"""
     for c in pool:
         info = rt.get(c["code"], {})
         chg = info.get("chg")
@@ -1142,8 +1143,14 @@ def _screen_score(pool, rt, klines):
         tech = _tech_score(kl["close"].tolist()) if (kl is not None and len(kl) >= 60) else 60
         roe = c.get("roe", 15)
         qual = max(20, min(98, roe * 2.6))
-        sent_pos = c.get("sent", (0.6, 0.1, 0.3))[0]
-        sent = 30 + sent_pos * 60
+        # 情绪分项：用情绪分析得到的带符号得分(sent_score, -1~1)映射为 0-100，中性=50；
+        # 不再用「正面占比」占比。回退：无 sent_score 时沿用原占比口径。
+        _sig = c.get("sent_score")
+        if _sig is not None:
+            sent = 50 + _sig * 50          # 看多>50，中性=50，看空<50
+        else:
+            sent_pos = c.get("sent", (0.6, 0.1, 0.3))[0]
+            sent = 30 + sent_pos * 60
         c["real_score"] = round(0.30 * mom + 0.30 * tech + 0.25 * qual + 0.15 * sent, 1)
         c["score_break"] = {"mom": round(mom, 1), "tech": round(tech, 1),
                             "qual": round(qual, 1), "sent": round(sent, 1)}
@@ -2044,7 +2051,11 @@ def page_screen():
             sent_res = _screen_sentiment(pool, industry, risk, rt, klines, allow_real=_use_real,
                                          comments=stock_news if _use_real else None)
             for c in pool:
-                c["sent"] = sent_res[c["code"]]["sent_tuple"]
+                _sr = sent_res[c["code"]]
+                c["sent"] = _sr["sent_tuple"]
+                # 情绪分析得到的带符号得分(-1~1)：正面为+，负面为-，中性为0 —— 用于综合评分的情绪分项（替代原「正面占比」）
+                _sl, _ss = _sr.get("label"), _sr.get("score", 0.5)
+                c["sent_score"] = (_ss if _sl == "正面" else (-_ss if _sl == "负面" else 0.0))
             t1, t2, t3, t4 = st.tabs(["💰 基本面特征", "📈 技术面特征", "💬 情绪面特征（FinBERT）", "🏭 行业面特征"])
             with t1:
                 fund_rows = []
@@ -2197,12 +2208,12 @@ def page_screen():
                                    "动量·实时涨跌(30%)": b["mom"],
                                    "技术面·MA/MACD(30%)": b["tech"],
                                    "质量·ROE(25%)": b["qual"],
-                                   "情绪·正面占比(15%)": b["sent"],
+                                   "情绪·分析得分(15%)": b["sent"],
                                    "综合分": c["real_score"]})
                 if _bdata:
                     st.markdown("**🧮 评分依据拆解**（综合分 = 0.30×动量 + 0.30×技术面 + 0.25×质量 + 0.15×情绪；各分项 0-100 加权汇总）")
                     st.dataframe(pd.DataFrame(_bdata), use_container_width=True, hide_index=True)
-                    st.caption("分项来源：动量 = 实时涨跌幅映射；技术面 = 由真实日K计算的 MA20/60 与 MACD；质量 = ROE；情绪 = FinBERT 正面占比。Top-3 取综合分最高者。")
+                    st.caption("分项来源：动量 = 实时涨跌幅映射；技术面 = 由真实日K计算的 MA20/60 与 MACD；质量 = ROE；情绪 = 情绪分析带符号得分（看多为正、看空为负，中性 50）。Top-3 取综合分最高者。")
             else:
                 st.caption("评分 Prompt：You are a senior equity analyst. 综合基本面 / 技术面 / 情绪面 / 行业面四维特征，0-100 打分（演示模式使用内置示例评分）。")
             s.update(label="⚖️ **LLM 综合评分** · Top-3 标的已锁定", state="complete")
