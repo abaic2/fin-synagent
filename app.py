@@ -3028,9 +3028,9 @@ def render_kb():
     st.caption("每条命中右侧的「相似度 0.xxx」= query 向量与该片段向量经 bge 编码后的余弦相似度：分数越接近 1，片段与问题语义越贴合（本库 Top-5 多在 0.7+，属高度相关）；「排名 #k」即该片段按相似度从高到低排第几位。「来源 / p页码」用于溯源到原始权威 PDF。")
 
     # 三、RAG 检索评价指标
-    st.markdown('<div class="sec-title">RAG 检索评价指标</div><div class="sec-sub">基于本地 bge 嵌入对全量集合做真实余弦相似度排序，相关性以『来源溯源』判定（实体级 qrels + 行业纯度），在无人工标注下验证多集合 RAG 的路由正确性与片段相关性</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec-title">RAG 检索评价指标</div><div class="sec-sub">全部指标由 kb_data.json 中真实的 300 条召回片段（60 查询 × Top-5）实时统计得出：余弦相似度来自真实 bge 编码，相关性以「命中来源是否属于该查询所属行业集合（即路由是否正确）」为代理判定，据此验证多集合 RAG 的路由正确性与片段相关性</div>', unsafe_allow_html=True)
     kpis = [
-        (f'{eval_overall.get("recall@5", 0):.1%}', "Recall@5（实体级）"),
+        (f'{eval_overall.get("recall@5", 0):.1%}', "Recall@5（行业路由）"),
         (f'{eval_overall.get("mrr", 0):.3f}', "MRR 平均倒数排名"),
         (f'{eval_overall.get("ndcg@5", 0):.3f}', "NDCG@5"),
         (f'{eval_overall.get("purity@5", 0):.1%}', "行业纯度@5"),
@@ -3049,8 +3049,8 @@ def render_kb():
     _mrr_rank = (1.0 / _mrr) if _mrr > 1e-9 else float("inf")
     metric_rows = [
         {
-            "指标": "Recall@5（实体级）",
-            "含义": "返回的 Top-5 片段中，真正相关的片段占比；相关性以查询目标实体 / 行业来源为锚判定",
+            "指标": "Recall@5（行业路由）",
+            "含义": "返回的 Top-5 片段中，命中来源属于「查询所属行业集合」的比例；即多集合 RAG 的路由正确性代理",
             "取值": "0 ~ 1（越高越好）",
             "当前值与解读": f'= {eval_overall.get("recall@5",0):.1%}：应召回的相关 chunk 里有 {eval_overall.get("recall@5",0):.0%} 落在 Top-5，越接近 100% 相关信息越不会漏在第一屏之外。',
         },
@@ -3092,7 +3092,7 @@ def render_kb():
         },
     ]
     st.dataframe(pd.DataFrame(metric_rows), use_container_width=True, hide_index=True)
-    st.caption("读法示例：Recall@5=0.85 → 该召回的相关片段里有 85% 落在 Top-5；MRR=0.9 → 平均第一个命中排在第 1~2 位；余弦相似度=0.75 → 该片段与问题语义高度接近、非边缘相关。分行业表中「查询数」即该行业参与评测的代表性查询条数（各 15），「Top5均相似度」即上表余弦相似度的分行业均值。所有数值随查询集与相关性定义变化，仅作系统能力佐证。")
+    st.caption("读法示例：Recall@5=100% → Top-5 片段全部命中正确行业集合（路由零串扰）；MRR=1.000 → 每个查询首个命中均排第 1；余弦相似度=0.75 → 该片段与问题语义高度接近、非边缘相关。本评测集所有 300 条命中均来自查询所属行业，故路由类指标为满值，差异主要体现在「相似度分布」与「来源覆盖数」上。分行业表中「查询数」即该行业参与评测的代表性查询条数（各 15），「Top5均相似度」即上表余弦相似度的分行业均值。所有数值由真实召回样本实时统计，随查询集与知识库规模变化，仅作系统能力佐证。")
 
     st.markdown('<div class="sec-title" style="font-size:1.1rem;margin-top:26px;">相似度置信度分布（Top-5 命中相似度）</div><div class="sec-sub">横轴为余弦相似度分箱，纵轴为命中数——分布越靠右、峰值越高，代表检索返回段落与查询语义越贴近</div>', unsafe_allow_html=True)
     hist = eval_overall.get("histogram", [])
@@ -3119,7 +3119,7 @@ def render_kb():
             "Top5均相似度": m.get("sim_mean_top5"),
         })
     st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-    st.caption("方法学：相关性以查询目标主体（公司/机构）锚定相关 chunk（未命中实体时回退『与 Top-1 同小节 heading』）；行业纯度以行业已知来源前缀判定；NDCG 采用二值相关性。该评测在无人工标注下验证多集合 RAG 的路由正确性与片段相关性，数值随查询集与定义变化，仅作系统能力佐证。")
+    st.caption("方法学：相关性以「命中来源是否属于查询所属行业集合」为代理判定（即路由正确性）；行业纯度以行业已知来源前缀判定；NDCG 采用二值相关性。本评测集 300 条命中全部来自查询所属行业，故路由类指标为满值，真实差异体现在余弦相似度分布与来源覆盖数上。该评测在无人工标注下验证多集合 RAG 的路由正确性与片段相关性，数值由真实召回样本实时统计、随查询集与知识库规模变化，仅作系统能力佐证。")
 
     # 四、RAG 全流程详解（每步含真实示例）
     st.markdown('<div class="sec-title">RAG 全流程详解</div><div class="sec-sub">检索增强生成：离线建库 + 在线查询两端，全部基于本项目真实代码与数据</div>', unsafe_allow_html=True)
