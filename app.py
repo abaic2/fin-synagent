@@ -1229,6 +1229,42 @@ def page_home():
         if st.button("打开面试建议 →", key="go_interview", use_container_width=True, type="primary"):
             _select_nav("面试建议"); st.rerun()
 
+    # 能力详解（从「技能中心」迁移至首页展示）
+    st.markdown('<div class="sec-title">Fin Synagent · 能力详解</div><div class="sec-sub">Consult 智能咨询以多智能体协同工作流组织回答，Screen 智能荐股以筛选树六步输出</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec-title" style="font-size:1.12rem;margin-top:6px;">能力一 · Consult 智能咨询（多智能体工作流）</div>', unsafe_allow_html=True)
+    agents = [
+        ("a-leader", "👔", "Leader 拆解", "将问题拆为 2-4 个子任务，分配专家角色"),
+        (None, "📚", "RAG 检索", "行业知识库 Top-K 召回并注入提示词"),
+        ("a-expert", "🎓", "Expert 作答", "基于知识库片段输出结构化分析"),
+        ("a-critic", "🧐", "Critic 批评", "自查逻辑缺失与建议不具体处"),
+        ("a-verify", "🔎", "Verify 求证", "交叉核验信源，杜绝幻觉"),
+        ("a-sum", "📋", "Summary 总结", "给出可执行结论并邀请追问"),
+    ]
+    acols = st.columns(6)
+    for i, (cls, em, role, desc) in enumerate(agents):
+        border = 'style="border-top:4px solid #4A6FD4;"' if cls is None else ""
+        with acols[i]:
+            st.markdown(f"""
+            <div class="agent {cls or ''}" {border}>
+              <div class="em">{em}</div>
+              <div class="role">{role}</div>
+              <div class="desc">{desc}</div>
+            </div>""", unsafe_allow_html=True)
+
+    st.markdown('<div class="sec-title" style="font-size:1.12rem;">能力二 · Screen 智能荐股（筛选树六步）</div>', unsafe_allow_html=True)
+    steps = [
+        ("🧭 意图解析", "JSON 给出 {sector, risk, objective}：保守→稳定收益，积极→资本增值"),
+        ("🏗️ 股票池", "行业过滤 + 基础过滤（市值>500亿、非 ST）→ 5 支候选"),
+        ("🧬 四维特征", "基本面 / 技术面 / 情绪面(FinBERT) / 行业面 表格呈现"),
+        ("⚖️ LLM 评分", "资深分析师视角 0-100 打分（茅台 91.2 / 五粮液 86.7 …）"),
+        ("🏆 Top-3 推荐", "每只给出推荐理由与分析师观点"),
+        ("⚠️ 风险提示", "附风险提示 + 数据为模拟的声明"),
+    ]
+    scols = st.columns(2)
+    for i, (t, d) in enumerate(steps):
+        with scols[i % 2]:
+            st.markdown(f'<div class="step"><b>{t}</b><br><span style="color:#6B768F;font-size:.85rem;">{d}</span></div>', unsafe_allow_html=True)
+
     st.markdown('<div class="sec-title">版本迭代</div><div class="sec-sub">Fin 1.0 → Fin 3.0 持续进化</div>', unsafe_allow_html=True)
     st.markdown("""
     <div class="tl">
@@ -3034,43 +3070,7 @@ def page_skills():
       <p style="margin-top:12px;color:#7A86A3;">⚡ 触发：以 Fin Synagent 身份提问 / 投资咨询 / 荐股选股 / “用多智能体投顾模式分析”</p>
     </div>""", unsafe_allow_html=True)
 
-    # 二、Fin Synagent 能力详解
-    st.markdown('<div class="sec-title">Fin Synagent · 能力详解</div><div class="sec-sub">Consult 智能咨询以多智能体协同工作流组织回答，Screen 智能荐股以筛选树六步输出</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sec-title" style="font-size:1.12rem;margin-top:6px;">能力一 · Consult 智能咨询（多智能体工作流）</div>', unsafe_allow_html=True)
-    agents = [
-        ("a-leader", "👔", "Leader 拆解", "将问题拆为 2-4 个子任务，分配专家角色"),
-        (None, "📚", "RAG 检索", "行业知识库 Top-K 召回并注入提示词"),
-        ("a-expert", "🎓", "Expert 作答", "基于知识库片段输出结构化分析"),
-        ("a-critic", "🧐", "Critic 批评", "自查逻辑缺失与建议不具体处"),
-        ("a-verify", "🔎", "Verify 求证", "交叉核验信源，杜绝幻觉"),
-        ("a-sum", "📋", "Summary 总结", "给出可执行结论并邀请追问"),
-    ]
-    acols = st.columns(6)
-    for i, (cls, em, role, desc) in enumerate(agents):
-        border = 'style="border-top:4px solid #4A6FD4;"' if cls is None else ""
-        with acols[i]:
-            st.markdown(f"""
-            <div class="agent {cls or ''}" {border}>
-              <div class="em">{em}</div>
-              <div class="role">{role}</div>
-              <div class="desc">{desc}</div>
-            </div>""", unsafe_allow_html=True)
-
-    st.markdown('<div class="sec-title" style="font-size:1.12rem;">能力二 · Screen 智能荐股（筛选树六步）</div>', unsafe_allow_html=True)
-    steps = [
-        ("🧭 意图解析", "JSON 给出 {sector, risk, objective}：保守→稳定收益，积极→资本增值"),
-        ("🏗️ 股票池", "行业过滤 + 基础过滤（市值>500亿、非 ST）→ 5 支候选"),
-        ("🧬 四维特征", "基本面 / 技术面 / 情绪面(FinBERT) / 行业面 表格呈现"),
-        ("⚖️ LLM 评分", "资深分析师视角 0-100 打分（茅台 91.2 / 五粮液 86.7 …）"),
-        ("🏆 Top-3 推荐", "每只给出推荐理由与分析师观点"),
-        ("⚠️ 风险提示", "附风险提示 + 数据为模拟的声明"),
-    ]
-    scols = st.columns(2)
-    for i, (t, d) in enumerate(steps):
-        with scols[i % 2]:
-            st.markdown(f'<div class="step"><b>{t}</b><br><span style="color:#6B768F;font-size:.85rem;">{d}</span></div>', unsafe_allow_html=True)
-
-    # 三、内置资产
+    # 二、内置资产（技能封装：references 文档 + scripts 代码）
     st.markdown('<div class="sec-title">技能内置资产 · 文档与代码</div><div class="sec-sub">Fin Synagent 技能打包了可直接复用的 references（知识文档）与 scripts（可运行代码），调用时自动加载；以下为资产清单与核心代码</div>', unsafe_allow_html=True)
     st.markdown("""
     <div class="card" style="height:100%">
