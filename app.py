@@ -1120,27 +1120,35 @@ def _compute_tech(close_list):
     return {"trend": trend, "ma": ma_lbl, "vol": vol_lbl, "macd": macd_lbl}
 
 
-def _tech_score(close_list):
-    """由真实收盘价序列返回 0-100 技术面得分（趋势 + MACD），基于连续信号更精细。"""
+def _tech_detail(close_list):
+    """返回技术面得分的连续中间量，便于透明展示（与 _tech_score 同源）。"""
     try:
         s = pd.Series(close_list)
-        ma20 = s.rolling(20).mean().iloc[-1]
-        ma60 = s.rolling(60).mean().iloc[-1]
+        ma20 = float(s.rolling(20).mean().iloc[-1])
+        ma60 = float(s.rolling(60).mean().iloc[-1])
         ema12 = s.ewm(span=12, adjust=False).mean()
         ema26 = s.ewm(span=26, adjust=False).mean()
         dif = ema12 - ema26
         dea = dif.ewm(span=9, adjust=False).mean()
-        macd = (dif - dea).iloc[-1]
-        close = s.iloc[-1]
+        macd = float((dif - dea).iloc[-1])
+        close = float(s.iloc[-1])
         # 趋势信号：MA20 相对 MA60 的偏离，±8% 映射到 ±1
-        ma_dev = (ma20 - ma60) / ma60 if ma60 != 0 else 0
+        ma_dev = (ma20 - ma60) / ma60 if ma60 != 0 else 0.0
         trend_score = max(-1, min(1, ma_dev / 0.08))
         # MACD 信号：MACD 柱相对最新收盘价，±2% 映射到 ±1
-        macd_score = max(-1, min(1, (macd / close) / 0.02)) if close != 0 else 0
+        macd_score = max(-1, min(1, (macd / close) / 0.02)) if close != 0 else 0.0
         score = (trend_score * 0.6 + macd_score * 0.4) * 50 + 50
-        return round(max(5, min(95, score)), 1)
+        return {"ma20": ma20, "ma60": ma60, "ma_dev": ma_dev, "macd": macd, "close": close,
+                "trend_score": trend_score, "macd_score": macd_score,
+                "score": max(5, min(95, score))}
     except Exception:
-        return 60
+        return None
+
+
+def _tech_score(close_list):
+    """由真实收盘价序列返回 0-100 技术面得分（趋势 + MACD），基于连续信号更精细。"""
+    d = _tech_detail(close_list)
+    return round(d["score"], 1) if d else 60
 
 
 def _screen_score(pool, rt, klines):
@@ -2170,15 +2178,18 @@ def page_screen():
                                 _txts = [f"{n.get('title', '')}｜{n.get('abstract', '')}".strip("｜") for n in _nws]
                                 _cached = c.get("comment_labels", [])
                                 if len(_cached) >= len(_nws):
-                                    _lbls = [ls for _, ls in _cached[:len(_nws)]]
+                                    _pairs = [ls for _, ls in _cached[:len(_nws)]]
                                 else:
-                                    _lbls = _label_news(_txts, allow_real=_use_real)
-                                for n, (lbl, _) in zip(_nws, _lbls):
+                                    _pairs = _label_news(_txts, allow_real=_use_real)
+                                for n, (lbl, sc) in zip(_nws, _pairs):
+                                    _sc = max(0.05, min(0.99, float(sc)))
+                                    _signed = (_sc if lbl == "正面" else (-_sc if lbl == "负面" else 0.0))
                                     _all_rows.append((c["name"], n["title"], n.get("abstract", ""),
                                                       n.get("source", "—"), n.get("date", "—"),
-                                                      n.get("hot", "—"), lbl, n.get("url", "")))
+                                                      n.get("hot", "—"), lbl, round(_signed, 2), round(_sc, 2),
+                                                      n.get("url", "")))
                             else:
-                                _all_rows.append((c["name"], "（该标的暂无实时评论/讨论）", "", "—", "—", "—", "—", ""))
+                                _all_rows.append((c["name"], "（该标的暂无实时评论/讨论）", "", "—", "—", "—", "—", 0.0, 0.0, ""))
                         if _all_rows:
                             def _title_cell(tt, ab, url):
                                 head = (f"<a href='{url}' target='_blank' style='color:{NAVY};"
@@ -2200,8 +2211,11 @@ def page_screen():
                                 f"vertical-align:top;'>{ht}</td>"
                                 f"<td style='padding:4px 8px;font-weight:700;color:"
                                 f"{('#E54545' if lbl=='负面' else '#C9A227' if lbl=='正面' else '#8A93A8')};"
-                                f"white-space:nowrap;vertical-align:top;'>{lbl}</td></tr>"
-                                for nm, tt, ab, src, dt, ht, lbl, uu in _all_rows
+                                f"white-space:nowrap;vertical-align:top;'>{lbl}</td>"
+                                f"<td style='padding:4px 8px;font-weight:700;color:"
+                                f"{('#E54545' if signed>0 else '#2E9E5B' if signed<0 else '#8A93A8')};"
+                                f"white-space:nowrap;vertical-align:top;'>{('+' if signed>0 else '')}{signed:.2f}</td></tr>"
+                                for nm, tt, ab, src, dt, ht, lbl, signed, sc, uu in _all_rows
                             )
                             st.markdown(
                                 f"<table style='width:100%;font-size:.82rem;border-collapse:collapse;'>"
@@ -2209,12 +2223,14 @@ def page_screen():
                                 f"<th style='padding:3px 8px;'>标的</th><th style='padding:3px 8px;'>评论（仅限该标的）</th>"
                                 f"<th style='padding:3px 8px;'>作者/来源</th><th style='padding:3px 8px;'>日期</th>"
                                 f"<th style='padding:3px 8px;'>人气</th>"
-                                f"<th style='padding:3px 8px;'>情绪</th></tr></thead>"
+                                f"<th style='padding:3px 8px;'>情绪</th>"
+                                f"<th style='padding:3px 8px;'>情绪分(±)</th></tr></thead>"
                                 f"<tbody>{_nrows}</tbody></table>",
                                 unsafe_allow_html=True)
                             st.caption("↑ 每条评论均标注所属标的，按个股代码（关键字）进入该股票的股吧实时爬取真实散户讨论，"
                                        "并校验股吧归属，绝不混入无关标的（主源：东方财富股吧；回退：新浪个股资讯 → Google News 关键词 → 东财公告）。"
-                                       + (" 情绪由金融词库 + DeepSeek 标注。" if _use_real else " 情绪由金融词库标注。"))
+                                       + (" 情绪由金融词库 + DeepSeek 标注。" if _use_real else " 情绪由金融词库标注。")
+                                       + " 每行『情绪分(±)』= 正面取 +置信度、负面取 −置信度、中性取 0；个股情绪分项由该标的全部评论带符号分的均值映射到 0–100。")
                         else:
                             st.info("⚠️ 实时评论抓取失败（网络受限，常见于境外部署节点），已略过；个股情绪解读不受影响。")
             with t4:
@@ -2265,6 +2281,42 @@ def page_screen():
                     st.markdown("**🧮 评分依据拆解**（综合分 = 0.30×动量 + 0.30×技术面 + 0.25×质量 + 0.15×情绪；各分项 0-100 加权汇总）")
                     st.dataframe(pd.DataFrame(_bdata), use_container_width=True, hide_index=True)
                     st.caption("分项来源：动量 = 实时涨跌幅映射；技术面 = 由真实日K计算的 MA20/60 与 MACD；质量 = ROE；情绪 = 情绪分析带符号得分（看多为正、看空为负，中性 50）。Top-3 取综合分最高者。")
+                    with st.expander("🧮 维度得分计算明细（每个子分怎么算出来的）", expanded=False):
+                        _detail_rows = []
+                        for c in pool:
+                            b = c.get("score_break")
+                            if not b:
+                                continue
+                            _info = rt.get(c["code"], {})
+                            _chg = _info.get("chg")
+                            _kl = klines.get(c["code"])
+                            _td = _tech_detail(_kl["close"].tolist()) if (_kl is not None and len(_kl) >= 60) else None
+                            _roe = c.get("roe", 15)
+                            if _td is not None:
+                                _tech_d = (f"MA20={_td['ma20']:.2f} / MA60={_td['ma60']:.2f} → 偏离{_td['ma_dev']*100:+.2f}% → 趋势分{_td['trend_score']:+.2f}；"
+                                           f"MACD柱={_td['macd']:.3f} ÷ 收盘{_td['close']:.2f} → MACD分{_td['macd_score']:+.2f}；"
+                                           f"0.6×趋势 + 0.4×MACD = {_td['score']:.1f}")
+                            else:
+                                _tech_d = "无真实日K(≥60根)，回退默认 60"
+                            if isinstance(_chg, (int, float)):
+                                _mom_d = f"涨跌幅{_chg:+.2f}% → 55 + {_chg:.2f}×7 = {b['mom']:.1f}（限幅15–95）"
+                            else:
+                                _mom_d = "无实时涨跌幅，沿用综合分中的动量值"
+                            _qual_d = f"ROE={_roe}% → ROE×2.6 = {b['qual']:.1f}（限幅20–98）"
+                            _sig = c.get("sent_score")
+                            if _sig is not None:
+                                _sent_d = f"逐条评论聚合带符号情绪={_sig:+.3f} → 50 + {_sig:+.3f}×50 = {b['sent']:.1f}"
+                            else:
+                                _sl = sent_res[c["code"]]["label"]; _ss = sent_res[c["code"]]["score"]
+                                _sent_d = f"无评论聚合，回退 stock-level {_sl}{_ss:.2f} → 映射"
+                            _detail_rows.append({"股票": c["name"],
+                                                 "动量(30%)": _mom_d,
+                                                 "技术面(30%)": _tech_d,
+                                                 "质量(25%)": _qual_d,
+                                                 "情绪(15%)": _sent_d})
+                        if _detail_rows:
+                            st.dataframe(pd.DataFrame(_detail_rows), use_container_width=True, hide_index=True)
+                            st.caption("综合分 = 0.30×动量 + 0.30×技术面 + 0.25×质量 + 0.15×情绪。技术面/情绪为连续映射，权重为各维度在综合分中的占比。")
             else:
                 st.caption("评分 Prompt：You are a senior equity analyst. 综合基本面 / 技术面 / 情绪面 / 行业面四维特征，0-100 打分（演示模式使用内置示例评分）。")
             s.update(label="⚖️ **LLM 综合评分** · Top-3 标的已锁定", state="complete")
