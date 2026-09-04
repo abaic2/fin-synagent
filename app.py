@@ -818,7 +818,8 @@ def _ds_client():
         return None
 
 
-def _ds_text(system: str, user: str, fallback: str, allow_real: bool = True) -> str:
+def _ds_text(system: str, user: str, fallback: str, allow_real: bool = True,
+             temperature: float = 0.7) -> str:
     """非流式调用 DeepSeek；缺密钥/异常/allow_real=False 时返回 fallback 文本。"""
     if not allow_real:
         return fallback
@@ -830,7 +831,7 @@ def _ds_text(system: str, user: str, fallback: str, allow_real: bool = True) -> 
             model=DS_MODEL,
             messages=[{"role": "system", "content": system},
                       {"role": "user", "content": user}],
-            temperature=0.7,
+            temperature=temperature,
             stream=False,
         )
         return (resp.choices[0].message.content or "").strip() or fallback
@@ -1481,10 +1482,26 @@ def _screen_reason(stk: dict, industry: str, risk: str, allow_real: bool = True)
 
 
 # ---- 情绪面：真实舆情解读 + 实时市场资讯 ----
+# 词表覆盖「财经书面语 + 股吧散户口语」两类，避免口语化评论全落中性
 _POS_WORDS = ["上涨", "增持", "买入", "利好", "增长", "超预期", "创新高", "盈利", "分红", "回购",
-             "扩产", "中标", "签约", "复苏", "提升", "改善", "强劲", "突破", "上调", "稳增", "回暖"]
+             "扩产", "中标", "签约", "复苏", "提升", "改善", "强劲", "突破", "上调", "稳增", "回暖",
+             # 财经书面
+             "净流入", "净买入", "领涨", "飘红", "反超", "预增", "扭亏", "走强", "新高", "看多",
+             "外资增持", "获增持", "金叉", "主升", "放量上涨", "跑赢大盘", "低估", "高股息", "业绩预增",
+             # 股吧散户口语（正面）
+             "抄底", "加仓", "满仓", "建仓", "回本", "吃肉", "起飞", "雄起", "稳了", "机会",
+             "要涨", "做多", "慢牛", "攒股", "收息", "凌绝顶",
+             "难得", "良心", "潜力", "黄金坑", "上车", "拿住", "真香"]
 _NEG_WORDS = ["下跌", "减持", "卖出", "利空", "下滑", "不及预期", "亏损", "下调", "风险", "承压",
-             "诉讼", "处罚", "退市", "暴雷", "违约", "冻结", "调查", "暴跌", "回落", "缩水", "放缓"]
+             "诉讼", "处罚", "退市", "暴雷", "违约", "冻结", "调查", "暴跌", "回落", "缩水", "放缓",
+             # 财经书面
+             "净流出", "流出", "领跌", "破发", "破净", "减值", "高位分歧", "清仓式", "质押", "立案",
+             "警示", "问询", "造假", "违规", "被查", "萎缩", "下降", "净利降", "营收降",
+             # 股吧散户口语（负面）
+             "砸盘", "跳水", "杀跌", "破位", "割肉", "清仓", "止损", "套牢", "站岗", "接盘",
+             "割韭菜", "韭菜", "出货", "诱多", "画饼", "完蛋", "凉了", "崩了", "麻了", "没救",
+             "跑路", "忽悠", "看空", "要跌", "完蛋了", "走弱", "阴跌", "新低", "跌停", "大跌",
+             "亏麻", "血亏", "垃圾", "拉黑"]
 
 
 def _lexicon_sentiment(text: str):
@@ -1569,7 +1586,9 @@ def _screen_sentiment(pool, industry, risk, rt, klines, allow_real=True, comment
                               for k, v in fb.items()}, ensure_ascii=False)
         sys_p = ("你是金融情绪分析专家。基于给定 A 股标的的真实行情、技术面特征，以及该标的近期股吧散户评论，"
                  "判断其当前市场情绪（正面/中性/负面），给出 0-1 置信度，并用 1 句话说明依据"
-                 "（结合涨跌幅、趋势、MACD，若有相关评论则结合评论情绪）。"
+                 "（结合涨跌幅、趋势、MACD，若有相关评论则结合评论情绪倾向）。"
+                 "口径：散户评论有明显看多/看空、抱怨或乐观情绪时必须判正面或负面；"
+                 "只有评论稀少且行情无方向时才判中性。"
                  "只输出 JSON，格式：{\"600519\":{\"label\":\"正面\",\"score\":0.82,\"summary\":\"...\"}}，不要多余文字。")
         user_p = ("行业：" + industry + "；风险偏好：" + risk + "。特征（含各标的 comments 字段为该股近期股吧评论文本）："
                   + json.dumps(feats, ensure_ascii=False))
@@ -1825,19 +1844,53 @@ def fetch_stock_comments(code: str, name: str = "", n: int = 5):
     return []
 
 
-def _label_news(texts, allow_real=True):
-    """对真实新闻标题做情感标注，返回 [(label, score)]。真实模式可选 DeepSeek，否则本地词库。"""
-    if allow_real and texts and _ds_client() is not None:
-        sys_p = ("你是金融舆情分析专家。对给定财经新闻标题逐条判断情绪（正面/中性/负面），"
-                 "输出 JSON 数组，每项 {\"label\":\"...\",\"score\":0-1}。只输出 JSON。")
+def _ds_json_array(raw: str):
+    """从 DeepSeek 输出中鲁棒地提取 JSON 数组：剥离 markdown 代码围栏，
+    失败再尝试截取首个 '[' 到最后一个 ']'。返回 list 或 None。"""
+    if not raw:
+        return None
+    txt = re.sub(r"```(?:json)?|```", "", raw).strip()
+    try:
+        v = json.loads(txt)
+        return v if isinstance(v, list) else None
+    except Exception:
+        pass
+    i, j = txt.find("["), txt.rfind("]")
+    if 0 <= i < j:
         try:
-            arr = json.loads(_ds_text(sys_p, json.dumps(texts, ensure_ascii=False), "", allow_real=True))
-            if isinstance(arr, list):
+            v = json.loads(txt[i:j + 1])
+            return v if isinstance(v, list) else None
+        except Exception:
+            return None
+    return None
+
+
+def _label_news(texts, allow_real=True):
+    """对评论/新闻标题（含摘要）做情感标注，返回 [(label, score)]。
+    真实模式用 DeepSeek 逐条判断（低温度、明确'中性仅用于纯数据播报'的口径），
+    解析失败/无 Key/演示模式回退本地词库。"""
+    if allow_real and texts and _ds_client() is not None:
+        sys_p = ("你是金融舆情标注专家。输入是 A 股个股的散户评论或新闻标题（可能含正文摘要），"
+                 "请逐条判断该文本对【对应个股】的情绪倾向，输出三分类：正面/中性/负面。"
+                 "标注口径：凡是表达观点、预期、买卖意向、情绪宣泄的，必须归入正面或负面；"
+                 "只有纯数据播报且无倾向（如融资余额、大宗交易成交、股东会通知、行情快报）才判中性。"
+                 "score 为 0-1 置信度。输出 JSON 数组，与输入等长、顺序一致，"
+                 "每项格式 {\"label\":\"正面|中性|负面\",\"score\":0.8}。只输出 JSON 数组，不要任何解释。")
+        try:
+            raw = _ds_text(sys_p, json.dumps(texts, ensure_ascii=False), "", allow_real=True,
+                           temperature=0.2)
+            arr = _ds_json_array(raw)
+            if isinstance(arr, list) and arr:
                 res = []
                 for i, t in enumerate(texts):
                     d = arr[i] if i < len(arr) and isinstance(arr[i], dict) else {}
-                    if d.get("label"):
-                        res.append((d["label"], float(d.get("score", 0.5))))
+                    lbl = d.get("label")
+                    if lbl in ("正面", "中性", "负面"):
+                        try:
+                            sc = max(0.05, min(0.99, float(d.get("score", 0.7))))
+                        except Exception:
+                            sc = 0.7
+                        res.append((lbl, sc))
                     else:
                         res.append(_lexicon_sentiment(t))
                 return res
@@ -2043,7 +2096,9 @@ def page_screen():
                         for c in pool:
                             _nws = (stock_news or {}).get(c["code"], [])
                             if _nws:
-                                _lbls = _label_news([n["title"] for n in _nws], allow_real=_use_real)
+                                _lbls = _label_news(
+                                    [f"{n.get('title', '')}｜{n.get('abstract', '')}".strip("｜")
+                                     for n in _nws], allow_real=_use_real)
                                 for n, (lbl, _) in zip(_nws, _lbls):
                                     _all_rows.append((c["name"], n["title"], n.get("abstract", ""),
                                                       n.get("source", "—"), n.get("date", "—"),
