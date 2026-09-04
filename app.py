@@ -1121,14 +1121,26 @@ def _compute_tech(close_list):
 
 
 def _tech_score(close_list):
-    """由真实收盘价序列返回 0-100 技术面得分（趋势 + MACD）。"""
+    """由真实收盘价序列返回 0-100 技术面得分（趋势 + MACD），基于连续信号更精细。"""
     try:
-        t = _compute_tech(close_list)
+        s = pd.Series(close_list)
+        ma20 = s.rolling(20).mean().iloc[-1]
+        ma60 = s.rolling(60).mean().iloc[-1]
+        ema12 = s.ewm(span=12, adjust=False).mean()
+        ema26 = s.ewm(span=26, adjust=False).mean()
+        dif = ema12 - ema26
+        dea = dif.ewm(span=9, adjust=False).mean()
+        macd = (dif - dea).iloc[-1]
+        close = s.iloc[-1]
+        # 趋势信号：MA20 相对 MA60 的偏离，±8% 映射到 ±1
+        ma_dev = (ma20 - ma60) / ma60 if ma60 != 0 else 0
+        trend_score = max(-1, min(1, ma_dev / 0.08))
+        # MACD 信号：MACD 柱相对最新收盘价，±2% 映射到 ±1
+        macd_score = max(-1, min(1, (macd / close) / 0.02)) if close != 0 else 0
+        score = (trend_score * 0.6 + macd_score * 0.4) * 50 + 50
+        return round(max(5, min(95, score)), 1)
     except Exception:
         return 60
-    trend_w = {"上升趋势": 1.0, "横盘整理": 0.5, "弱势整理": 0.0}.get(t["trend"], 0.5)
-    macd_w = {"金叉": 1.0, "粘合": 0.5, "死叉": 0.0}.get(t["macd"], 0.5)
-    return round((trend_w * 0.6 + macd_w * 0.4) * 100, 1)
 
 
 def _screen_score(pool, rt, klines):
@@ -1565,10 +1577,10 @@ def _heuristic_sentiment(f: dict):
 
 
 def _screen_sentiment(pool, industry, risk, rt, klines, allow_real=True, comments=None):
-    """为候选池每只股票生成情绪面解读（标签+置信度+摘要+三分类元组）。
-    真实模式：1 次 DeepSeek 批量调用，基于真实行情/技术面特征 + 该标的近期相关股吧评论生成；
+    """为候选池每只股票生成情绪面解读（标签+置信度+摘要+三分类元组+逐评聚合得分）。
+    真实模式：1 次 DeepSeek 批量调用做 stock-level 研判，并逐条标注 comments 聚合出更细粒度的情绪均值；
     演示/无 Key：基于真实特征的规则启发式。comments 为 {code: [{title,...},...]} 与该标的严格对应。
-    返回 {code: {label, score, summary, sent_tuple}}。"""
+    返回 {code: {label, score, summary, sent_tuple, comment_sent_score, comment_labels}}。"""
     feats = {}
     for c in pool:
         info = (rt or {}).get(c["code"], {}) if rt else {}
@@ -1592,8 +1604,31 @@ def _screen_sentiment(pool, industry, risk, rt, klines, allow_real=True, comment
             "trend": trend, "macd": macd,
             "comments": _cmt_txt,
         }
+    # 逐条评论标注并聚合，得到比单条 stock-level DeepSeek 分数更细粒度的情绪均值
+    comment_sent, comment_labels = {}, {}
+    if comments:
+        all_texts, code_index = [], []
+        for code, f in feats.items():
+            for txt in f["comments"]:
+                all_texts.append(txt)
+                code_index.append(code)
+        if all_texts:
+            try:
+                _ls = _label_news(all_texts, allow_real=allow_real)
+                _grouped = {}
+                for code, (lbl, sc) in zip(code_index, _ls):
+                    _grouped.setdefault(code, []).append((lbl, sc))
+                for code, vals in _grouped.items():
+                    signed = [(sc if lbl == "正面" else (-sc if lbl == "负面" else 0.0)) for lbl, sc in vals]
+                    comment_sent[code] = (sum(signed) / len(signed)) if signed else 0.0
+                    comment_labels[code] = list(zip(feats[code]["comments"], vals))
+            except Exception:
+                pass
     if allow_real:
         fb = {code: _heuristic_sentiment(f) for code, f in feats.items()}
+        for code in fb:
+            fb[code]["comment_sent_score"] = comment_sent.get(code)
+            fb[code]["comment_labels"] = comment_labels.get(code, [])
         fb_json = json.dumps({k: {"label": v["label"], "score": v["score"], "summary": v["summary"]}
                               for k, v in fb.items()}, ensure_ascii=False)
         sys_p = ("你是金融情绪分析专家。基于给定 A 股标的的真实行情、技术面特征，以及该标的近期股吧散户评论，"
@@ -1614,13 +1649,18 @@ def _screen_sentiment(pool, industry, risk, rt, klines, allow_real=True, comment
                     label = d["label"]; score = float(d.get("score", 0.5))
                     out[code] = {"label": label, "score": round(score, 2),
                                  "summary": d.get("summary", fb[code]["summary"]),
-                                 "sent_tuple": _to_sent_tuple(label, score)}
+                                 "sent_tuple": _to_sent_tuple(label, score),
+                                 "comment_sent_score": comment_sent.get(code),
+                                 "comment_labels": comment_labels.get(code, [])}
                 else:
                     out[code] = fb[code]
             return out
         except Exception:
             return fb
-    return {code: _heuristic_sentiment(f) for code, f in feats.items()}
+    return {code: {**_heuristic_sentiment(f),
+                   "comment_sent_score": comment_sent.get(code),
+                   "comment_labels": comment_labels.get(code, [])}
+            for code, f in feats.items()}
 
 
 def _ts_to_date(ts):
@@ -2053,9 +2093,15 @@ def page_screen():
             for c in pool:
                 _sr = sent_res[c["code"]]
                 c["sent"] = _sr["sent_tuple"]
-                # 情绪分析得到的带符号得分(-1~1)：正面为+，负面为-，中性为0 —— 用于综合评分的情绪分项（替代原「正面占比」）
-                _sl, _ss = _sr.get("label"), _sr.get("score", 0.5)
-                c["sent_score"] = (_ss if _sl == "正面" else (-_ss if _sl == "负面" else 0.0))
+                c["comment_labels"] = _sr.get("comment_labels", [])
+                # 优先使用逐条评论聚合的带符号情绪均值（更细粒度、分布更散），
+                # 无评论聚合时回退单条 stock-level DeepSeek 分数。
+                _agg = _sr.get("comment_sent_score")
+                if _agg is not None:
+                    c["sent_score"] = _agg
+                else:
+                    _sl, _ss = _sr.get("label"), _sr.get("score", 0.5)
+                    c["sent_score"] = (_ss if _sl == "正面" else (-_ss if _sl == "负面" else 0.0))
             t1, t2, t3, t4 = st.tabs(["💰 基本面特征", "📈 技术面特征", "💬 情绪面特征（FinBERT）", "🏭 行业面特征"])
             with t1:
                 fund_rows = []
@@ -2121,9 +2167,12 @@ def page_screen():
                         for c in pool:
                             _nws = (stock_news or {}).get(c["code"], [])
                             if _nws:
-                                _lbls = _label_news(
-                                    [f"{n.get('title', '')}｜{n.get('abstract', '')}".strip("｜")
-                                     for n in _nws], allow_real=_use_real)
+                                _txts = [f"{n.get('title', '')}｜{n.get('abstract', '')}".strip("｜") for n in _nws]
+                                _cached = c.get("comment_labels", [])
+                                if len(_cached) >= len(_nws):
+                                    _lbls = [ls for _, ls in _cached[:len(_nws)]]
+                                else:
+                                    _lbls = _label_news(_txts, allow_real=_use_real)
                                 for n, (lbl, _) in zip(_nws, _lbls):
                                     _all_rows.append((c["name"], n["title"], n.get("abstract", ""),
                                                       n.get("source", "—"), n.get("date", "—"),
