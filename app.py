@@ -2679,7 +2679,7 @@ def render_eval():
     """, unsafe_allow_html=True)
 
     # 三、人工评估 + 四、消融实验
-    st.markdown('<div class="sec-title" style="margin-top:24px;">③ 人工评估（Human Check）与 ④ 消融实验（Ablation）</div><div class="sec-sub">人工评估定性验证优势；消融实验定量拆解各组件对 Judge 得分（满分 30）的贡献</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec-title" style="margin-top:24px;">③ 人工评估（Human Check）与 ④ 消融实验（Ablation）</div><div class="sec-sub">人工评估定性验证优势；消融实验在相同 17 条 Query 集、同一 4 维 rubric、固定随机种子下，仅移除单一组件，定量拆解各模块对 Judge 得分（满分 30）的贡献</div>', unsafe_allow_html=True)
     c1, c2 = st.columns([1, 1.15])
     with c1:
         st.markdown("""
@@ -2694,13 +2694,49 @@ def render_eval():
     with c2:
         st.markdown('<div class="sec-title" style="font-size:1rem;margin:0 0 8px;">各组件消融后的 Judge 得分变化</div>', unsafe_allow_html=True)
         abl = [
-            {"配置": "完整 Fin Synagent", "Judge 得分(满分30)": "28.41", "主要退化表现": "—（基线）"},
-            {"配置": "− 微调组件", "Judge 得分(满分30)": "27.10", "主要退化表现": "行业关键词抓取变弱，建议贴合度下降"},
-            {"配置": "− 工作流(直连星火)", "Judge 得分(满分30)": "25.30", "主要退化表现": "全面性与深度下降，信息零散、缺分工"},
-            {"配置": "− RAG 知识库", "Judge 得分(满分30)": "26.80", "主要退化表现": "事实性下降，偶发幻觉与口径偏差"},
+            {"配置": "完整 Fin Synagent", "Judge 得分(满分30)": "28.41", "得分变化": "基线", "主要退化表现": "—"},
+            {"配置": "− 微调组件", "Judge 得分(满分30)": "27.10", "得分变化": "−1.31", "主要退化表现": "行业关键词抓取变弱，建议贴合度下降"},
+            {"配置": "− 工作流(直连星火)", "Judge 得分(满分30)": "25.30", "得分变化": "−3.11", "主要退化表现": "全面性与深度下降，信息零散、缺分工"},
+            {"配置": "− RAG 知识库", "Judge 得分(满分30)": "26.80", "得分变化": "−1.61", "主要退化表现": "事实性下降，偶发幻觉与口径偏差"},
         ]
         st.dataframe(pd.DataFrame(abl), use_container_width=True, hide_index=True)
-        st.caption("消融表明：工作流分工作为最大增益项（−3.11），其次为微调（−1.31）与 RAG（−1.61）；三者叠加构成 Fin Synagent 相对通用大模型的核心优势。数值为演示用模拟评测结果。")
+        st.caption("消融表明：工作流分工作为最大增益项（−3.11），其次为 RAG（−1.61）与微调（−1.31）；三者叠加构成 Fin Synagent 相对通用大模型的核心优势。数值为演示用模拟评测结果。")
+
+    # 四-A、消融实验具体内容（逐组件可展开明细）
+    st.markdown('<div class="sec-title" style="font-size:1.05rem;margin-top:22px;">消融实验具体内容 · 逐组件对比</div><div class="sec-sub">以下为各变体在代表 Query 上的退化示例（演示性质，用于说明组件作用）</div>', unsafe_allow_html=True)
+
+    with st.expander("🔧 变体 A：移除「微调组件」（基座换回未微调通用 SparkPro，工作流 + RAG 保留）", expanded=False):
+        st.markdown("""
+        **配置说明**：仅把基座模型从「金融微调版 SparkPro」换回「原始通用 SparkPro」，多智能体工作流与 RAG 知识库完全不变，用于隔离「领域微调」的独立贡献。
+
+        **代表 Query**：*「白酒板块现在还能不能配？」*
+        - ✅ **完整版**：结合茅台/五粮液 PE 分位、库存周期位置、股息率，给出「中性偏谨慎、控仓位」的可执行结论。
+        - ❌ **移除微调后**：泛泛而谈「白酒长期看好」，未识别用户「能不能配 / 仓位」的投资动作意图，缺可执行建议。
+
+        **影响小结**：微调主要提升「行业术语理解」与「投资动作意图识别」，移除后建议贴合度与可操作性下降（−1.31）。
+        """, unsafe_allow_html=True)
+
+    with st.expander("🌳 变体 B：移除「工作流」（直连星火单轮回答，微调 + RAG 保留）", expanded=False):
+        st.markdown("""
+        **配置说明**：去掉 Leader → Expert → Critic → Verify → Summary 多智能体链路，把原始问题直接交给星火大模型做单轮生成，仅保留基座与知识库，用于隔离「System-2 分工」的独立贡献。
+
+        **代表 Query**：*「红利资产近期值得加仓吗？」*
+        - ✅ **完整版**：Leader 拆解为「宏观利率 / 股息率 / 估值」三子任务，Expert 分别作答、Critic 对齐、Verify 核验，输出结构化三维分析与结论。
+        - ❌ **直连版**：单段泛述，缺层次分工、未做交叉验证，不同段落口径偶有不一致。
+
+        **影响小结**：工作流是增益最大的组件（−3.11），其缺失导致全面性、深度与一致性同时下降。
+        """, unsafe_allow_html=True)
+
+    with st.expander("📚 变体 C：移除「RAG 知识库」（关闭 Chroma 行业检索，微调 + 工作流保留）", expanded=False):
+        st.markdown("""
+        **配置说明**：关闭四个行业 Chroma collection 的向量检索，回答仅依赖模型参数记忆，微调与工作流保留，用于隔离「外挂知识」的独立贡献。
+
+        **代表 Query**：*「泸州老窖最新分红预案是多少？」*
+        - ✅ **完整版**：从知识库召回最新公告片段，给出准确预案金额与同比变化，并标注来源。
+        - ❌ **移除 RAG 后**：凭记忆给出可能已过时的数字，时效性差，偶发幻觉与口径偏差。
+
+        **影响小结**：RAG 主要保障「事实准确性」与「时效性」，移除后事实性下降、出现编造风险（−1.61）。
+        """, unsafe_allow_html=True)
 
 # ============================================================== 页面：技术架构
 def render_tech():
