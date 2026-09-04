@@ -1,10 +1,9 @@
-# RAG 全流程 · 离线建库与在线查询
+---
+name: rag-pipeline
+description: RAG 检索增强生成的离线建库 5 步与在线查询 5 步全流程，含每步真实数据、代码与召回样例，对应 scripts/kb_build/ 脚本。
+---
 
-> **文档类型**：技能参考文档（reference）
-> **所属技能**：Fin Synagent · 多智能体协同智能投顾
-> **关联模块**：Consult 智能咨询（知识库检索 RAG 链路）
-> **关联脚本**：`scripts/kb_build/`（extract_markdown / semantic_chunk / embed_store / verify_retrieval）
-> **何时引用**：需要真正落地 RAG 知识库（而非对话模拟）时，按本文件步骤执行
+# RAG 全流程 · 离线建库与在线查询
 
 ## 一、文档用途
 

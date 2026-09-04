@@ -3099,6 +3099,19 @@ def page_skills():
             if os.path.exists(_fpath):
                 with open(_fpath, encoding="utf-8") as _fh:
                     _doc = _fh.read()
+                # 剥离 YAML 前置头（--- ... ---），避免渲染成纯文本；将其 name/description 显示为元信息
+                if _doc.startswith("---"):
+                    _end = _doc.find("\n---", 3)
+                    if _end != -1:
+                        _fm = _doc[3:_end].strip()
+                        _doc = _doc[_end + 4:].lstrip("\n")
+                        _meta = "  ·  ".join(
+                            f"**{k.strip()}**：{v.strip()}"
+                            for _ln in _fm.splitlines()
+                            if ":" in _ln and (k := _ln.split(":", 1)[0]) and (v := _ln.split(":", 1)[1])
+                        )
+                        if _meta:
+                            st.caption(_meta)
                 _kb = len(_doc.encode("utf-8")) / 1024
                 st.caption(f"{len(_doc.splitlines())} 行 · {_kb:.1f} KB · 完整文档，直接读取自已部署的 .md 文件")
                 st.markdown(_doc)

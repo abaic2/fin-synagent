@@ -1,10 +1,9 @@
-# 微调全流程 · SparkPro + LoRA
+---
+name: finetune-pipeline
+description: 星火 SparkPro 基座 + LoRA 金融有监督微调全流程，含 FinCUGE/DISC-Fin-SFT/FinEval 数据集用法、训练配置与评测样例。
+---
 
-> **文档类型**：技能参考文档（reference）
-> **所属技能**：Fin Synagent · 多智能体协同智能投顾
-> **关联模块**：星火大模型模拟（金融 SFT 微调专区）
-> **基座/方法**：星火 SparkPro 基座 + LoRA 低秩适配
-> **何时引用**：需要真正落地金融领域微调（而非对话模拟）时，按本文件步骤执行
+# 微调全流程 · SparkPro + LoRA
 
 ## 一、文档用途
 
