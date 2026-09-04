@@ -1582,7 +1582,7 @@ def _screen_sentiment(pool, industry, risk, rt, klines, allow_real=True, comment
         # 安全取值：真实行情 info 优先，缺字段时回退内置 CANDIDATES 数据（演示模式保留）
         _price = info.get("price") if (info and info.get("price") is not None) else c.get("price")
         _pe = info.get("pe") if (info and info.get("pe") is not None) else c.get("pe")
-        _cmts = (comments or {}).get(c["code"], [])[:5] if comments else []
+        _cmts = (comments or {}).get(c["code"], [])[:15] if comments else []
         # 只保留评论文本（标题+摘要），去掉 url/人气等冗余字段，避免提示词膨胀
         _cmt_txt = [f"{x.get('title','')}｜{x.get('abstract','')}".strip("｜") for x in _cmts]
         feats[c["code"]] = {
@@ -2017,7 +2017,7 @@ def page_screen():
 
                     def _fetch_one(c):
                         try:
-                            return c["code"], fetch_stock_comments(c["code"], c.get("name", ""), 5)
+                            return c["code"], fetch_stock_comments(c["code"], c.get("name", ""), 15)
                         except Exception as e:
                             _COMMENT_DEBUG.setdefault(c["code"], []).append(f"未预期异常: {type(e).__name__} {str(e)[:60]}")
                             return c["code"], []
@@ -2028,7 +2028,7 @@ def page_screen():
                 except Exception:
                     for c in pool:
                         try:
-                            stock_news[c["code"]] = fetch_stock_comments(c["code"], c.get("name", ""), 5)
+                            stock_news[c["code"]] = fetch_stock_comments(c["code"], c.get("name", ""), 15)
                         except Exception:
                             stock_news[c["code"]] = []
                 _nn = sum(len(v) for v in stock_news.values())
@@ -2088,9 +2088,11 @@ def page_screen():
                 fig.add_trace(go.Bar(name="正面", x=names, y=[c["sent"][0] for c in pool], marker_color=RED))
                 fig.add_trace(go.Bar(name="中性", x=names, y=[c["sent"][2] for c in pool], marker_color="#C3CDE4"))
                 fig.add_trace(go.Bar(name="负面", x=names, y=[c["sent"][1] for c in pool], marker_color=GREEN))
-                fig.update_layout(**PLOTLY_BASE, barmode="stack", height=320, margin=dict(l=10, r=10, t=30, b=10),
-                                  title=dict(text="FinBERT 新闻情感三分类（正面 / 中性 / 负面）", font=dict(size=13, color=NAVY)),
-                                  yaxis=dict(gridcolor="#EEF1F8"), legend=dict(orientation="h", y=1.12))
+                fig.update_layout(**PLOTLY_BASE, barmode="stack", height=360, bargap=0.28,
+                                  margin=dict(l=10, r=10, t=40, b=70),
+                                  title=dict(text="FinBERT 新闻情感三分类（正面 / 中性 / 负面）", font=dict(size=13, color=NAVY), x=0.5, xanchor="center"),
+                                  yaxis=dict(gridcolor="#EEF1F8", tickformat=".0%", range=[0, 1]),
+                                  legend=dict(orientation="h", y=-0.18, x=0.5, xanchor="center", font=dict(size=11)))
                 st.plotly_chart(fig, use_container_width=True)
                 st.caption("FinBERT：基于 BERT 架构、在海量金融语料（财报 / 研报 / 新闻）上微调的情感分析模型")
                 render_analysis_block(industry, "sentiment")
