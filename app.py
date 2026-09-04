@@ -2522,9 +2522,11 @@ def render_spark():
               <h4>{name}</h4><p>{meta['desc']}</p>
             </div>""", unsafe_allow_html=True)
             if st.button(f"{'✅ 当前模型' if st.session_state['spark_model'] == name else '选用 ' + name}",
-                         key=f"pick_{name}", use_container_width=True,
+                         key=f"tb_spark_pick_{name}", use_container_width=True,
                          type="primary" if st.session_state["spark_model"] == name else "secondary"):
                 st.session_state["spark_model"] = name
+                # 标记为内部 rerun，避免 sidebar option_menu 在 rerun 时误触发 on_change 跳转页面
+                st.session_state["_suppress_nav"] = True
                 st.rerun()
     model = st.session_state["spark_model"]
 
@@ -3240,6 +3242,16 @@ NAV_GROUPS = [
 def _on_nav_change(key):
     """侧边栏某个分组的 option_menu 被点击时触发（Streamlit 在 rerun 前调用，
     此时其它分组的 widget 尚未实例化，可安全重置它们的 key，避免双高亮/直接写 widget key 报错）。"""
+    # 内部 rerun（如星火模型选择按钮）可能触发 option_menu 的误报 on_change，
+    # 此时应忽略导航并把触发 widget 复位到当前页面对应的选项。
+    if st.session_state.get("_suppress_nav"):
+        for _t, _o, _i in NAV_GROUPS:
+            _k = "nav_" + _t
+            if _k == key:
+                expected = st.session_state["nav"] if st.session_state["nav"] in _o else _o[0]
+                if st.session_state[key] != expected:
+                    st.session_state[key] = expected
+        return
     _sel = st.session_state[key]
     st.session_state["nav"] = _sel
     for _t, _o, _i in NAV_GROUPS:
@@ -3325,5 +3337,8 @@ with st.sidebar:
 choice = st.session_state["nav"]
 
 PAGES[choice]()
+
+# 内部 rerun 抑制标志在本轮渲染结束后复位，避免影响下一次真实侧边栏导航
+st.session_state["_suppress_nav"] = False
 
 st.markdown('<div class="footer">🚩 Fin Synagent · 基于大语言模型的多智能体人机协同投顾推理模式 · 仅供演示</div>', unsafe_allow_html=True)
