@@ -3014,41 +3014,25 @@ def page_skills():
     <div class="hero hero-mini">
       <div class="kicker">WorkBuddy Skills · 可复用能力包</div>
       <h1 style="font-size:2rem;">🧩 技能中心</h1>
-      <div class="sub" style="margin-bottom:0;">本项目沉淀的两个可复用 WorkBuddy 技能：投顾「能力版」Fin Synagent 与通用 Streamlit 演示·部署工作流。它们把完整方法论封装为对话内可直接调用的能力，无需重复搭建。</div>
+      <div class="sub" style="margin-bottom:0;">本项目沉淀的可复用 WorkBuddy 技能：投顾「能力版」Fin Synagent。它把完整方法论封装为对话内可直接调用的能力，无需重复搭建。</div>
     </div>
     """, unsafe_allow_html=True)
 
-    # 一、两大核心技能
-    st.markdown('<div class="sec-title">两大核心技能</div><div class="sec-sub">一个专注「投顾能力」，一个专注「演示与部署」，共同支撑本 Demo 从原型到上线的全过程</div>', unsafe_allow_html=True)
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown("""
-        <div class="card" style="height:100%">
-          <div class="icon">🤖</div>
-          <h4>Fin Synagent · 多智能体协同智能投顾（能力版）</h4>
-          <p>在对话中直接提供 Fin Synagent 的投顾能力，不依赖任何应用部署。回答遵循「深思熟虑、实事求是、小心求证」三原则，声明数据为模拟/知识库内容。</p>
-          <div style="margin-top:12px;">
-            <span class="pill">System-2 深思熟虑</span>
-            <span class="pill">RAG 引用信源</span>
-            <span class="pill">四维荐股</span>
-            <span class="pill">白酒·红利·贵金属</span>
-          </div>
-          <p style="margin-top:12px;color:#7A86A3;">⚡ 触发：以 Fin Synagent 身份提问 / 投资咨询 / 荐股选股 / “用多智能体投顾模式分析”</p>
-        </div>""", unsafe_allow_html=True)
-    with c2:
-        st.markdown("""
-        <div class="card" style="height:100%">
-          <div class="icon">🚀</div>
-          <h4>Streamlit Demo Deployer · 演示构建与部署</h4>
-          <p>从 PPTX/DOCX/PDF 等材料到「高保真美观演示 + 公网可访问」的端到端工作流。覆盖提取、构建、本地验证、外网部署四步。</p>
-          <div style="margin-top:12px;">
-            <span class="pill">材料解析</span>
-            <span class="pill">高保真 UI</span>
-            <span class="pill">cloudflared 隧道</span>
-            <span class="pill">Community Cloud</span>
-          </div>
-          <p style="margin-top:12px;color:#7A86A3;">⚡ 触发：生成 streamlit demo / 部署到 Cloud / 本地应用公网分享</p>
-        </div>""", unsafe_allow_html=True)
+    # 一、核心技能
+    st.markdown('<div class="sec-title">核心技能 · Fin Synagent</div><div class="sec-sub">投顾「能力版」——把完整方法论封装为对话内可直接调用的能力，无需重复搭建</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="card" style="height:100%">
+      <div class="icon">🤖</div>
+      <h4>Fin Synagent · 多智能体协同智能投顾（能力版）</h4>
+      <p>在对话中直接提供 Fin Synagent 的投顾能力，不依赖任何应用部署。回答遵循「深思熟虑、实事求是、小心求证」三原则，声明数据为模拟/知识库内容。</p>
+      <div style="margin-top:12px;">
+        <span class="pill">System-2 深思熟虑</span>
+        <span class="pill">RAG 引用信源</span>
+        <span class="pill">四维荐股</span>
+        <span class="pill">白酒·红利·贵金属</span>
+      </div>
+      <p style="margin-top:12px;color:#7A86A3;">⚡ 触发：以 Fin Synagent 身份提问 / 投资咨询 / 荐股选股 / “用多智能体投顾模式分析”</p>
+    </div>""", unsafe_allow_html=True)
 
     # 二、Fin Synagent 能力详解
     st.markdown('<div class="sec-title">Fin Synagent · 能力详解</div><div class="sec-sub">Consult 智能咨询以多智能体协同工作流组织回答，Screen 智能荐股以筛选树六步输出</div>', unsafe_allow_html=True)
@@ -3086,47 +3070,23 @@ def page_skills():
         with scols[i % 2]:
             st.markdown(f'<div class="step"><b>{t}</b><br><span style="color:#6B768F;font-size:.85rem;">{d}</span></div>', unsafe_allow_html=True)
 
-    # 三、Deployer 工作流
-    st.markdown('<div class="sec-title">Streamlit Demo Deployer · 工作流</div><div class="sec-sub">四步从材料到公网：本地解析与构建，再二选一部署</div>', unsafe_allow_html=True)
-    deploy = [
-        ("① 材料提取", "tencent-docs-routing 优先，失败回退 python-pptx/docx；extract_office_content.py 一键提取文字/表格/图表/备注，内容锚定材料真实数据。"),
-        ("② Demo 构建", "受管 venv 装 streamlit/plotly/option-menu；单文件 app.py + 侧边栏导航；注入金融风设计系统（渐变 Hero、玻璃拟态卡、金 KPI、红涨绿跌）。"),
-        ("③ 本地验证", "headless 启动 + curl 200 校验；改动先 ast.parse；present_files 预览 localhost。"),
-        ("④ 外网部署", "A. cloudflared 隧道即时分享（进程关即失效）；B. GitHub 推送 → Streamlit Community Cloud 永久域名，git push 自动重部署。"),
-    ]
-    tl = "".join(f'<div class="tl-item"><b>{t}</b><p>{d}</p></div>' for t, d in deploy)
-    st.markdown(f'<div class="tl">{tl}</div>', unsafe_allow_html=True)
-
-    # 四、内置资产
-    st.markdown('<div class="sec-title">技能内置资产 · 文档与代码</div><div class="sec-sub">每个技能打包了可直接复用的 references（知识文档）与 scripts（可运行代码），调用时自动加载；以下为资产清单与核心代码</div>', unsafe_allow_html=True)
-    bc1, bc2 = st.columns(2)
-    with bc1:
-        st.markdown("""
-        <div class="card" style="height:100%">
-          <div class="icon">📂</div>
-          <h4>Fin Synagent · references + scripts</h4>
-          <p>
-          📄 <b>industry-knowledge.md</b> — 白酒/红利/贵金属行业知识与信源<br>
-          📄 <b>consult-playbook.md</b> — 三行业标准答案、批评与修正文本<br>
-          📄 <b>screen-data.md</b> — 股票池、四维数据、LLM 评分与推荐理由<br>
-          📄 <b>rag-pipeline.md</b> / <b>finetune-pipeline.md</b> — RAG/微调全流程文档<br>
-          🐍 <b>scripts/kb_build/</b> — 7 个建库与语料下载脚本（见下方代码）
-          </p>
-        </div>""", unsafe_allow_html=True)
-    with bc2:
-        st.markdown("""
-        <div class="card" style="height:100%">
-          <div class="icon">📂</div>
-          <h4>Deployer · references + scripts</h4>
-          <p>
-          📄 <b>deploy-guide.md</b> — cloudflared / Community Cloud 部署与排错<br>
-          📄 <b>streamlit-styling-pitfalls.md</b> — 新版 Streamlit 样式坑修复模板<br>
-          🐍 <b>scripts/extract_office_content.py</b> — PPTX/DOCX 通用提取脚本（见下方代码）
-          </p>
-        </div>""", unsafe_allow_html=True)
+    # 三、内置资产
+    st.markdown('<div class="sec-title">技能内置资产 · 文档与代码</div><div class="sec-sub">Fin Synagent 技能打包了可直接复用的 references（知识文档）与 scripts（可运行代码），调用时自动加载；以下为资产清单与核心代码</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="card" style="height:100%">
+      <div class="icon">📂</div>
+      <h4>Fin Synagent · references + scripts</h4>
+      <p>
+      📄 <b>industry-knowledge.md</b> — 白酒/红利/贵金属行业知识与信源<br>
+      📄 <b>consult-playbook.md</b> — 三行业标准答案、批评与修正文本<br>
+      📄 <b>screen-data.md</b> — 股票池、四维数据、LLM 评分与推荐理由<br>
+      📄 <b>rag-pipeline.md</b> / <b>finetune-pipeline.md</b> — RAG/微调全流程文档<br>
+      🐍 <b>scripts/kb_build/</b> — 7 个建库与语料下载脚本（见下方代码）
+      </p>
+    </div>""", unsafe_allow_html=True)
 
     st.markdown('<div class="sec-title" style="font-size:1.05rem;margin-top:18px;">🐍 打包的 Python 脚本（完整源码 · 支持下载）</div>', unsafe_allow_html=True)
-    st.caption("以下 8 个脚本为技能内置的真实可运行代码，已随 Demo 一同部署；展开即可查看完整源码并一键下载。")
+    st.caption("以下 7 个脚本为 Fin Synagent 技能内置的真实可运行代码，已随 Demo 一同部署；展开即可查看完整源码并一键下载。")
 
     PACKAGED_SCRIPTS = [
         ("🔧", "kb_build/embed_store.py", "bge 向量化 + Chroma 分行业入库"),
@@ -3136,7 +3096,6 @@ def page_skills():
         ("📥", "kb_build/download_annual_reports.py", "巨潮 API 批量下载龙头年报"),
         ("📥", "kb_build/download_supplement.py", "季报 / ESG / 分红公告补充下载"),
         ("📥", "kb_build/download_pbc_survey.py", "央行问卷调查报告 PDF 下载"),
-        ("📑", "extract_office_content.py", "PPTX / DOCX 通用提取（Deployer）"),
     ]
     for _icon, _rel, _desc in PACKAGED_SCRIPTS:
         _fpath = os.path.join(SCRIPTS_DIR, _rel.replace("/", os.sep))
@@ -3157,9 +3116,9 @@ def page_skills():
             else:
                 st.warning("该脚本未随部署包提供。")
 
-    st.info("📚 <b>RAG 全流程</b>的详细步骤与每步真实示例在「知识库」页；<b>金融微调数据集 + 微调训练全流程</b>已移至「星火大模型」页（点左侧导航查看）；上方 <b>8 个工程脚本</b>均实时读取随 Demo 部署的真实 <code>.py</code> 文件，展开可看完整源码并一键下载，与 Fin Synagent / Deployer 技能内置版本完全一致。")
+    st.info("📚 <b>RAG 全流程</b>的详细步骤与每步真实示例在「知识库」页；<b>金融微调数据集 + 微调训练全流程</b>已移至「星火大模型」页（点左侧导航查看）；上方 <b>7 个工程脚本</b>均实时读取随 Demo 部署的真实 <code>.py</code> 文件，展开可看完整源码并一键下载，与 Fin Synagent 技能内置版本完全一致。")
 
-    st.info("💡 在 WorkBuddy 中可通过对话直接调用：提到「生成 streamlit demo / 部署」会触发 Deployer；以「Fin Synagent 投顾」身份提问或要求行业分析、荐股，会触发 Fin Synagent 能力版。")
+    st.info("💡 在 WorkBuddy 中可通过对话直接调用：以「Fin Synagent 投顾」身份提问或要求行业分析、荐股，会触发 Fin Synagent 能力版。")
 
 # ============================================================== 导航
 @st.cache_data
