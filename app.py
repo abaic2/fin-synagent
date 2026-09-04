@@ -1225,7 +1225,7 @@ def page_home():
     with c2:
         st.markdown('<div class="card"><div class="icon">🧩</div><h4>我想看技术</h4><p>星火大模型、RAG、微调、评测与知识库全揭秘。</p></div>', unsafe_allow_html=True)
         if st.button("查看技术底座 →", key="go_tech", use_container_width=True, type="primary"):
-            _select_nav("技术底座"); st.rerun()
+            _select_nav("星火大模型"); st.rerun()
     with c3:
         st.markdown('<div class="card"><div class="icon">🎤</div><h4>我在准备面试</h4><p>简历项目介绍、STAR 行为题与技术高频问答。</p></div>', unsafe_allow_html=True)
         if st.button("打开面试建议 →", key="go_interview", use_container_width=True, type="primary"):
@@ -3219,45 +3219,60 @@ def page_glossary():
             st.markdown(f'<div class="gloss-grid">{rows}</div>', unsafe_allow_html=True)
     st.caption("⭐ 标注的为最基础、最重要的核心术语；术语定义面向演示与教学场景，实际投顾落地时请以监管口径与业务规范为准。")
 
-# 技术底座：把星火大模型 / 技术设计 / 测试评估 / RAG 知识库 合并为单页 Tab，避免导航平铺过散
-def page_tech_base():
+# ============================================================== 页面：星火大模型
+def page_spark():
     st.markdown("""
     <div class="hero hero-mini">
-      <div class="kicker">Tech Stack · Multi-Agent / RAG / Fine-tune / Eval</div>
-      <h1 style="font-size:2rem;">🧩 技术底座</h1>
-      <div class="sub" style="margin-bottom:0;">星火大模型 · 技术设计 · 测试评估 · RAG 知识库 —— 四大技术切面，组合成 Fin Synagent 的底层能力</div>
+      <div class="kicker">Tech Stack · LLM Engine</div>
+      <h1 style="font-size:2rem;">🔥 星火大模型</h1>
+      <div class="sub" style="margin-bottom:0;">星火 Web API 模拟、参数配置、金融微调数据集与 SparkPro + LoRA 微调全流程</div>
     </div>
     """, unsafe_allow_html=True)
-    tab_spark, tab_tech, tab_eval, tab_kb = st.tabs(["🔥 星火大模型", "🧠 技术设计", "🧪 测试评估", "📚 RAG 知识库"])
-    with tab_spark:
-        render_spark()
-    with tab_tech:
-        render_tech()
-    with tab_eval:
-        render_eval()
-    with tab_kb:
-        render_kb()
+    render_spark()
+
+# ============================================================== 页面：技术设计
+def page_tech_design():
+    st.markdown("""
+    <div class="hero hero-mini">
+      <div class="kicker">Tech Stack · Architecture</div>
+      <h1 style="font-size:2rem;">🧠 技术设计</h1>
+      <div class="sub" style="margin-bottom:0;">Consult 多智能体工作流、Screen 筛选树、模型微调与知识库设计</div>
+    </div>
+    """, unsafe_allow_html=True)
+    render_tech()
+
+# ============================================================== 页面：测试评估
+def page_eval():
+    st.markdown("""
+    <div class="hero hero-mini">
+      <div class="kicker">Tech Stack · Evaluation</div>
+      <h1 style="font-size:2rem;">🧪 测试评估</h1>
+      <div class="sub" style="margin-bottom:0;">统计检验、模拟用户评测、人工评估与消融实验</div>
+    </div>
+    """, unsafe_allow_html=True)
+    render_eval()
+
+# ============================================================== 页面：RAG 知识库
+def page_rag_kb():
+    st.markdown("""
+    <div class="hero hero-mini">
+      <div class="kicker">Tech Stack · Retrieval</div>
+      <h1 style="font-size:2rem;">📚 RAG 知识库</h1>
+      <div class="sub" style="margin-bottom:0;">真实建库规模、检索样本浏览器、RAG 评价指标与离在线全流程</div>
+    </div>
+    """, unsafe_allow_html=True)
+    render_kb()
 
 # 导航分组（按受众）：产品体验 / 技术底座 / 附录参考
 NAV_GROUPS = [
     ("产品体验", ["首页", "智能咨询", "智能荐股"], ["house-door", "chat-square-text", "graph-up-arrow"]),
-    ("技术底座", ["技术底座", "技能中心"], ["cpu", "puzzle"]),
+    ("技术底座", ["星火大模型", "技术设计", "测试评估", "RAG 知识库", "技能中心"], ["fire", "cpu", "beaker", "book", "puzzle"]),
     ("附录参考", ["专有名词解释", "面试建议"], ["book", "chat-dots"]),
 ]
 
 def _on_nav_change(key):
     """侧边栏某个分组的 option_menu 被点击时触发（Streamlit 在 rerun 前调用，
     此时其它分组的 widget 尚未实例化，可安全重置它们的 key，避免双高亮/直接写 widget key 报错）。"""
-    # 内部 rerun（如星火模型选择按钮）可能触发 option_menu 的误报 on_change，
-    # 此时应忽略导航并把触发 widget 复位到当前页面对应的选项。
-    if st.session_state.get("_suppress_nav"):
-        for _t, _o, _i in NAV_GROUPS:
-            _k = "nav_" + _t
-            if _k == key:
-                expected = st.session_state["nav"] if st.session_state["nav"] in _o else _o[0]
-                if st.session_state[key] != expected:
-                    st.session_state[key] = expected
-        return
     _sel = st.session_state[key]
     st.session_state["nav"] = _sel
     for _t, _o, _i in NAV_GROUPS:
@@ -3277,12 +3292,15 @@ PAGES = {
     "首页": page_home,
     "智能咨询": page_consult,
     "智能荐股": page_screen,
-    "技术底座": page_tech_base,
+    "星火大模型": page_spark,
+    "技术设计": page_tech_design,
+    "测试评估": page_eval,
+    "RAG 知识库": page_rag_kb,
     "面试建议": page_interview,
     "专有名词解释": page_glossary,
     "技能中心": page_skills,
 }
-NAV_ICONS = ["house-door", "chat-square-text", "graph-up-arrow", "cpu", "chat-dots", "book", "puzzle"]
+NAV_ICONS = ["house-door", "chat-square-text", "graph-up-arrow", "fire", "cpu", "beaker", "book", "chat-dots", "book", "puzzle"]
 
 with st.sidebar:
     st.markdown("""
@@ -3343,8 +3361,5 @@ with st.sidebar:
 choice = st.session_state["nav"]
 
 PAGES[choice]()
-
-# 内部 rerun 抑制标志在本轮渲染结束后复位，避免影响下一次真实侧边栏导航
-st.session_state["_suppress_nav"] = False
 
 st.markdown('<div class="footer">🚩 Fin Synagent · 基于大语言模型的多智能体人机协同投顾推理模式 · 仅供演示</div>', unsafe_allow_html=True)
