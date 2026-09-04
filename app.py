@@ -1998,10 +1998,20 @@ def _ds_json_array(raw: str):
     return None
 
 
+def _soft_intensity(text: str):
+    """词库中性但 DeepSeek 仍给出观点的少数评论：用文本强度（标点/emoji/叠字/长度）做确定性打散，避免分数扎堆。"""
+    excl = text.count("!") + text.count("！")
+    ques = text.count("?") + text.count("？")
+    emo = sum(1 for c in text if ord(c) >= 0x1F000)
+    rep = sum(0.03 for ch in "啊呀哦额哈嘞哇噻" if text.count(ch) >= 2)
+    return min(0.30, excl * 0.09 + ques * 0.04 + emo * 0.07 + (len(text) ** 0.5) * 0.012 + rep)
+
+
 def _label_news(texts, allow_real=True):
     """对评论/新闻标题（含摘要）做情感标注，返回 [(label, score)]。
-    真实模式先调用 DeepSeek 逐条判断；DeepSeek 判中性时若本地词库有明显倾向则覆盖，
-    解析失败/无 Key/演示模式直接回退本地词库。"""
+    真实模式：DeepSeek 负责定标签（尤擅含蓄/反讽/无词库命中的语句），但分数以本地带权词库的
+    细粒度为主——DeepSeek 与词库同向时用词库分数（已有区分度），词库中性且 DeepSeek 有观点时
+    用文本强度做确定性打散；解析失败/无 Key/演示模式直接回退本地词库。"""
     lex_res = [_lexicon_sentiment(t) for t in texts]
     if allow_real and texts and _ds_client() is not None:
         sys_p = ("你是金融舆情标注专家。输入是 A 股个股的散户评论或新闻标题（可能含正文摘要），"
@@ -2018,21 +2028,30 @@ def _label_news(texts, allow_real=True):
                 res = []
                 for i, t in enumerate(texts):
                     d = arr[i] if i < len(arr) and isinstance(arr[i], dict) else {}
-                    lbl = d.get("label")
-                    if lbl in ("正面", "中性", "负面"):
-                        try:
-                            sc = max(0.05, min(0.99, float(d.get("score", 0.7))))
-                        except Exception:
-                            sc = 0.7
-                        # DeepSeek 偏保守，若它判中性但词库有明显倾向，则用词库覆盖
-                        if lbl == "中性":
-                            lex_lbl, lex_sc = lex_res[i]
-                            if lex_lbl != "中性":
-                                res.append((lex_lbl, round(lex_sc * 0.92, 2)))
-                                continue
-                        res.append((lbl, sc))
+                    ds_lbl = d.get("label")
+                    try:
+                        ds_sc = max(0.05, min(0.99, float(d.get("score", 0.7))))
+                    except Exception:
+                        ds_sc = 0.7
+                    lex_lbl, lex_sc = lex_res[i]
+                    # —— 定标签：DeepSeek 优先；解析不出的标签回退词库 ——
+                    if ds_lbl not in ("正面", "中性", "负面"):
+                        res.append((lex_lbl, lex_sc)); continue
+                    if ds_lbl == "中性":
+                        # DeepSeek 判中性：词库有明显倾向则覆盖（带符号分×0.92），否则保持中性
+                        if lex_lbl != "中性":
+                            res.append((lex_lbl, round(lex_sc * 0.92, 2)))
+                        else:
+                            res.append(("中性", lex_sc))
+                        continue
+                    # DeepSeek 给出非中性观点
+                    ds_sign = 1 if ds_lbl == "正面" else -1
+                    if lex_lbl == ds_lbl:
+                        # 词库同向：用词库细粒度分数（关键在于打破 DeepSeek 的 0.71 扎堆）
+                        res.append((ds_lbl, lex_sc))
                     else:
-                        res.append(lex_res[i])
+                        # 词库中性 或 与 DeepSeek 反向：信任 DeepSeek 标签，分数用文本强度确定性打散
+                        res.append((ds_lbl, round(0.5 + ds_sign * (0.20 + _soft_intensity(t)), 2)))
                 return res
         except Exception:
             pass
