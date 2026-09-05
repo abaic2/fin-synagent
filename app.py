@@ -3405,15 +3405,31 @@ NAV_ICONS = [
     "book", "chat-dots",
 ]
 
+# 简略版（精简模式）：仅保留核心页面，技术底座与附录参考归入标准版
+NAV_PAGES_LITE = ["首页", "智能咨询", "智能荐股", "技能中心"]
+NAV_ICONS_LITE = ["house-door", "chat-square-text", "graph-up-arrow", "puzzle"]
+
 def _on_nav_change(key):
     """单一导航菜单被点击时触发：把当前选中页写入全局 nav 并刷新。"""
     st.session_state["nav"] = st.session_state[key]
     st.rerun()
 
 
+def _on_mode_change():
+    """展示模式切换（标准版 / 简略版）：更新全局 mode，并把当前页收敛到该模式可见页面。"""
+    st.session_state["mode"] = "lite" if st.session_state.get("mode_radio") == "简略版" else "standard"
+    _pages = NAV_PAGES_LITE if st.session_state["mode"] == "lite" else NAV_PAGES
+    if st.session_state["nav"] not in _pages:
+        st.session_state["nav"] = _pages[0]
+    st.rerun()
+
+
 def _select_nav(page):
     """编程式跳转（首页卡片/按钮等）：只改 nav 并标记待同步，严禁直接写 widget key，
-    否则会在 widget 已实例化后触发 StreamlitWidgetAlreadyInstantiatedError。"""
+    否则会在 widget 已实例化后触发 StreamlitWidgetAlreadyInstantiatedError。
+    若当前为简略版而目标页不在简略版，自动切回标准版以便查看该页。"""
+    if st.session_state.get("mode") == "lite" and page not in NAV_PAGES_LITE:
+        st.session_state["mode"] = "standard"
     st.session_state["nav"] = page
     st.session_state["_nav_pending"] = True
     st.session_state["_nav_pending_page"] = page
@@ -3440,14 +3456,22 @@ with st.sidebar:
     """, unsafe_allow_html=True)
     if "nav" not in st.session_state:
         st.session_state["nav"] = "首页"
+    if "mode" not in st.session_state:
+        st.session_state["mode"] = "standard"
+    # 展示模式切换：标准版（全部页面）/ 简略版（仅核心页面）
+    _mode_idx = 0 if st.session_state["mode"] == "standard" else 1
+    st.radio("展示模式", ["标准版", "简略版"], index=_mode_idx,
+             horizontal=True, key="mode_radio", on_change=_on_mode_change)
+    _pages = NAV_PAGES_LITE if st.session_state["mode"] == "lite" else NAV_PAGES
+    _icons = NAV_ICONS_LITE if st.session_state["mode"] == "lite" else NAV_ICONS
     # 编程式跳转（首页卡片/按钮）的回写必须在 option_menu 实例化之前完成，
     # 否则直接写已实例化的 widget key 会触发 StreamlitWidgetAlreadyInstantiatedError
     if st.session_state.get("_nav_pending"):
         _p = st.session_state.get("_nav_pending_page")
-        st.session_state["nav_main"] = _p if _p in NAV_PAGES else NAV_PAGES[0]
+        st.session_state["nav_main"] = _p if _p in _pages else _pages[0]
         st.session_state["_nav_pending"] = False
-    if "nav_main" not in st.session_state:
-        st.session_state["nav_main"] = st.session_state["nav"] if st.session_state["nav"] in NAV_PAGES else NAV_PAGES[0]
+    if "nav_main" not in st.session_state or st.session_state["nav_main"] not in _pages:
+        st.session_state["nav_main"] = st.session_state["nav"] if st.session_state["nav"] in _pages else _pages[0]
     SB_STYLES = {
         "container": {
             "padding": "10px 8px", "background-color": "#0E2450",
@@ -3474,10 +3498,9 @@ with st.sidebar:
             "border-left": "4px solid #E8C766",
         },
     }
-    # 单一合并菜单：所有页面平铺在一个 option_menu 中，当前页金色高亮，
-    # 不存在多分组各自选中导致的“多高亮 / 难辨当前页”问题
-    _default = NAV_PAGES.index(st.session_state["nav"]) if st.session_state["nav"] in NAV_PAGES else 0
-    option_menu(menu_title="导航", options=NAV_PAGES, icons=NAV_ICONS,
+    # 单一合并菜单：当前模式下的页面平铺在一个 option_menu 中，当前页金色高亮
+    _default = _pages.index(st.session_state["nav"]) if st.session_state["nav"] in _pages else 0
+    option_menu(menu_title="导航", options=_pages, icons=_icons,
                 default_index=_default, key="nav_main", styles=SB_STYLES,
                 on_change=_on_nav_change)
     st.markdown("---")
@@ -3485,6 +3508,10 @@ with st.sidebar:
     st.caption("⚠️ 数据为模拟数据，不构成投资建议")
 
 choice = st.session_state["nav"]
+# 简略版下若因异常落入非核心页，强制回到简略版首页，保证菜单与内容一致
+if st.session_state.get("mode") == "lite" and choice not in NAV_PAGES_LITE:
+    choice = NAV_PAGES_LITE[0]
+    st.session_state["nav"] = choice
 
 PAGES[choice]()
 
