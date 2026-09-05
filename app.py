@@ -3477,12 +3477,16 @@ with st.sidebar:
             "border-left": "4px solid #E8C766",
         },
     }
-    # 每个分组一个 option_menu；点击经 on_change 派发，避免在 widget 已实例化后直接写其 key 报错
+    # 每个分组一个 option_menu；点击经 on_change 派发。
+    # 由于每个分组必须有一个选中项，非当前页所在的分组会把「选中样式」设为与普通链接一致，
+    # 从视觉上保证只有当前页所在分组有金色高亮。
     for _title, _opts, _icons in NAV_GROUPS:
         _key = "nav_" + _title
-        _default = _opts.index(st.session_state["nav"]) if st.session_state["nav"] in _opts else 0
+        _active = st.session_state["nav"] in _opts
+        _default = _opts.index(st.session_state["nav"]) if _active else 0
+        _styles = {**SB_STYLES, "nav-link-selected": SB_STYLES["nav-link"] if not _active else SB_STYLES["nav-link-selected"]}
         option_menu(menu_title=_title, options=_opts, icons=_icons,
-                    default_index=_default, key=_key, styles=SB_STYLES,
+                    default_index=_default, key=_key, styles=_styles,
                     on_change=_on_nav_change)
     st.markdown("---")
     st.caption("富国开贸团队 · 演示 Demo v2")
