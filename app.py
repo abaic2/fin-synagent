@@ -3401,14 +3401,14 @@ NAV_GROUPS = [
 ]
 
 def _on_nav_change(key):
-    """侧边栏某个分组的 option_menu 被点击时触发（Streamlit 在 rerun 前调用，
-    此时其它分组的 widget 尚未实例化，可安全重置它们的 key，避免双高亮/直接写 widget key 报错）。"""
+    """侧边栏某个分组的 option_menu 被点击时触发。
+    直接写其它已实例化 widget 的 key 会被 Streamlit 忽略并导致多高亮，
+    因此只标记全局 pending，再由下一轮 rerun 前的同步块统一重置各分组 key。"""
     _sel = st.session_state[key]
     st.session_state["nav"] = _sel
-    for _t, _o, _i in NAV_GROUPS:
-        _k = "nav_" + _t
-        if _k != key:
-            st.session_state[_k] = _sel if _sel in _o else _o[0]
+    st.session_state["_nav_pending"] = True
+    st.session_state["_nav_pending_page"] = _sel
+    st.rerun()
 
 
 def _select_nav(page):
