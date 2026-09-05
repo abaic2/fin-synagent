@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="360" viewBox="0 0 1500 360">
+  <defs>
+    <marker id="ah" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#475569"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="1500" height="360" fill="#FFFFFF"/>
+  <text x="750" y="24" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="15" font-weight="800" fill="#1E293B">Screen 筛选树 · LangGraph 流水线（12 节点 + Critic→Reasoner 反思回环）</text>
+  <g>
+    <rect x="16" y="151" width="132" height="48" rx="10" ry="10" fill="#3B82F6" opacity="0.95"/>
+    <text x="82" y="171" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="13" font-weight="700" fill="#ffffff">fetch_data</text>
+    <text x="82" y="189" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#EAF0FF">实时行情</text>
+  </g>
+  <g>
+    <rect x="166" y="151" width="132" height="48" rx="10" ry="10" fill="#3B82F6" opacity="0.95"/>
+    <text x="232" y="171" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="13" font-weight="700" fill="#ffffff">planner</text>
+    <text x="232" y="189" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#EAF0FF">意图解析</text>
+  </g>
+  <g>
+    <rect x="316" y="151" width="132" height="48" rx="10" ry="10" fill="#6366F1" opacity="0.95"/>
+    <text x="382" y="171" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="13" font-weight="700" fill="#ffffff">build_pool</text>
+    <text x="382" y="189" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#EAF0FF">股票池构建</text>
+  </g>
+  <g>
+    <rect x="466" y="151" width="132" height="48" rx="10" ry="10" fill="#0EA5E9" opacity="0.95"/>
+    <text x="532" y="171" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="13" font-weight="700" fill="#ffffff">fetch_comments</text>
+    <text x="532" y="189" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#EAF0FF">评论抓取</text>
+  </g>
+  <g>
+    <rect x="616" y="46" width="132" height="48" rx="10" ry="10" fill="#10B981" opacity="0.95"/>
+    <text x="682" y="66" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="13" font-weight="700" fill="#ffffff">feat_fundamental</text>
+    <text x="682" y="84" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#EAF0FF">基本面</text>
+  </g>
+  <g>
+    <rect x="616" y="116" width="132" height="48" rx="10" ry="10" fill="#10B981" opacity="0.95"/>
+    <text x="682" y="136" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="13" font-weight="700" fill="#ffffff">feat_technical</text>
+    <text x="682" y="154" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#EAF0FF">技术面</text>
+  </g>
+  <g>
+    <rect x="616" y="186" width="132" height="48" rx="10" ry="10" fill="#10B981" opacity="0.95"/>
+    <text x="682" y="206" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="13" font-weight="700" fill="#ffffff">feat_sentiment</text>
+    <text x="682" y="224" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#EAF0FF">情绪面</text>
+  </g>
+  <g>
+    <rect x="616" y="256" width="132" height="48" rx="10" ry="10" fill="#10B981" opacity="0.95"/>
+    <text x="682" y="276" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="13" font-weight="700" fill="#ffffff">feat_industry</text>
+    <text x="682" y="294" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#EAF0FF">行业面</text>
+  </g>
+  <g>
+    <rect x="766" y="151" width="132" height="48" rx="10" ry="10" fill="#8B5CF6" opacity="0.95"/>
+    <text x="832" y="171" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="13" font-weight="700" fill="#ffffff">synthesize</text>
+    <text x="832" y="189" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#EAF0FF">四维汇聚</text>
+  </g>
+  <g>
+    <rect x="916" y="151" width="132" height="48" rx="10" ry="10" fill="#F59E0B" opacity="0.95"/>
+    <text x="982" y="171" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="13" font-weight="700" fill="#ffffff">scorer</text>
+    <text x="982" y="189" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#EAF0FF">LLM 综合评分</text>
+  </g>
+  <g>
+    <rect x="1066" y="151" width="132" height="48" rx="10" ry="10" fill="#6366F1" opacity="0.95"/>
+    <text x="1132" y="171" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="13" font-weight="700" fill="#ffffff">reasoner</text>
+    <text x="1132" y="189" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#EAF0FF">分析师观点+理由</text>
+  </g>
+  <g>
+    <rect x="1216" y="151" width="132" height="48" rx="10" ry="10" fill="#EF4444" opacity="0.95"/>
+    <text x="1282" y="171" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="13" font-weight="700" fill="#ffffff">critic</text>
+    <text x="1282" y="189" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#EAF0FF">校验与反思</text>
+  </g>
+  <g>
+    <rect x="1366" y="151" width="132" height="48" rx="10" ry="10" fill="#64748B" opacity="0.95"/>
+    <text x="1432" y="171" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="13" font-weight="700" fill="#ffffff">END</text>
+    <text x="1432" y="189" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#EAF0FF">定稿输出</text>
+  </g>
+  <path d="M148,175 L166,175" fill="none" stroke="#475569" stroke-width="2.2" marker-end="url(#ah)"/>
+  <path d="M298,175 L316,175" fill="none" stroke="#475569" stroke-width="2.2" marker-end="url(#ah)"/>
+  <path d="M448,175 L466,175" fill="none" stroke="#475569" stroke-width="2.2" marker-end="url(#ah)"/>
+  <path d="M598,175 L766,175" fill="none" stroke="#475569" stroke-width="2.2" marker-end="url(#ah)"/>
+  <path d="M898,175 L916,175" fill="none" stroke="#475569" stroke-width="2.2" marker-end="url(#ah)"/>
+  <path d="M1048,175 L1066,175" fill="none" stroke="#475569" stroke-width="2.2" marker-end="url(#ah)"/>
+  <path d="M1198,175 L1216,175" fill="none" stroke="#475569" stroke-width="2.2" marker-end="url(#ah)"/>
+  <path d="M598,175 L616,70" fill="none" stroke="#475569" stroke-width="2.2" marker-end="url(#ah)"/>
+  <path d="M598,175 L616,140" fill="none" stroke="#475569" stroke-width="2.2" marker-end="url(#ah)"/>
+  <path d="M598,175 L616,210" fill="none" stroke="#475569" stroke-width="2.2" marker-end="url(#ah)"/>
+  <path d="M598,175 L616,280" fill="none" stroke="#475569" stroke-width="2.2" marker-end="url(#ah)"/>
+  <path d="M748,70 L766,175" fill="none" stroke="#475569" stroke-width="2.2" marker-end="url(#ah)"/>
+  <path d="M748,140 L766,175" fill="none" stroke="#475569" stroke-width="2.2" marker-end="url(#ah)"/>
+  <path d="M748,210 L766,175" fill="none" stroke="#475569" stroke-width="2.2" marker-end="url(#ah)"/>
+  <path d="M748,280 L766,175" fill="none" stroke="#475569" stroke-width="2.2" marker-end="url(#ah)"/>
+  <path d="M1348,175 L1366,175" fill="none" stroke="#64748B" stroke-width="2.2" marker-end="url(#ah)"/>
+  <text x="1357" y="168" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#64748B">结构完整 / 达上限</text>
+  <path d="M1282,199 C1282,320 1132,320 1132,199" fill="none" stroke="#EF4444" stroke-width="2.4" stroke-dasharray="7 4" marker-end="url(#ah)"/>
+  <text x="1207" y="336" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11" fill="#EF4444" font-weight="700">需修订 &amp; 回环未达上限 → reasoner</text>
+</svg>

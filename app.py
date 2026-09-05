@@ -2933,6 +2933,32 @@ def render_tech():
         with col:
             st.markdown(f'<div class="card"><div class="icon">{icon}</div><h4>{title}</h4><p>{desc}</p></div>', unsafe_allow_html=True)
 
+    # 筛选树 LangGraph 流水线可视化（与 Consult 同构的 StateGraph，详见 screen_graph.py）
+    _sg_svg = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "screen_graph.svg")
+    if os.path.exists(_sg_svg):
+        st.markdown('<div class="sec-sub" style="margin-top:18px">LangGraph 状态图 · 多智能体流水线（12 节点 + Critic→Reasoner 反思回环）</div>', unsafe_allow_html=True)
+        st.image(_sg_svg, use_column_width=True)
+        with st.expander("查看 Mermaid 源码", expanded=False):
+            st.code(
+                'flowchart TD\n'
+                '    A["fetch_data · 实时行情"] --> B["planner · 意图解析"]\n'
+                '    B --> C["build_pool · 股票池构建"]\n'
+                '    C --> D["fetch_comments · 个股评论抓取"]\n'
+                '    D --> E["feat_fundamental · 基本面"]\n'
+                '    D --> F["feat_technical · 技术面"]\n'
+                '    D --> G["feat_sentiment · 情绪面"]\n'
+                '    D --> H["feat_industry · 行业面"]\n'
+                '    E --> I["synthesize · 四维汇聚"]\n'
+                '    F --> I\n'
+                '    G --> I\n'
+                '    H --> I\n'
+                '    I --> J["scorer · LLM 综合评分"]\n'
+                '    J --> K["reasoner · 分析师观点+理由"]\n'
+                '    K --> L["critic · 校验与反思"]\n'
+                '    L -->|"需修订 & 回环未达上限"| K\n'
+                '    L -->|"结构完整 / 达上限"| M(["定稿输出"])',
+                language="mermaid")
+
     st.markdown('<div class="sec-title">模型微调与知识库</div><div class="sec-sub">专业性保障</div>', unsafe_allow_html=True)
     c1, c2 = st.columns(2)
     with c1:

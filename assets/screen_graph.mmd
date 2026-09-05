@@ -1,0 +1,17 @@
+flowchart TD
+    A["fetch_data · 实时行情"] --> B["planner · 意图解析"]
+    B --> C["build_pool · 股票池构建"]
+    C --> D["fetch_comments · 个股评论抓取"]
+    D --> E["feat_fundamental · 基本面"]
+    D --> F["feat_technical · 技术面"]
+    D --> G["feat_sentiment · 情绪面"]
+    D --> H["feat_industry · 行业面"]
+    E --> I["synthesize · 四维汇聚"]
+    F --> I
+    G --> I
+    H --> I
+    I --> J["scorer · LLM 综合评分"]
+    J --> K["reasoner · 分析师观点+理由"]
+    K --> L["critic · 校验与反思"]
+    L -->|"需修订 & 回环未达上限"| K
+    L -->|"结构完整 / 达上限"| M(["定稿输出"])
