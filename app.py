@@ -2645,6 +2645,7 @@ eval_data     = "FinEval"         # 金融多选一评测（34 科目）''', lan
 
 # ============================================================== 页面：评估测试
 def render_eval():
+    is_lite = st.session_state.get("mode") == "lite"
     # 评估框架总览
     st.markdown('<div class="sec-title">评估框架</div><div class="sec-sub">三视角交叉验证：自动评测（AI-as-Judge）量化能力上限 · 用户模拟（AI-as-Customers）衡量真实体验 · 人工评估 + 消融拆解各模块贡献</div>', unsafe_allow_html=True)
     framework = [
@@ -2654,6 +2655,36 @@ def render_eval():
     ]
     for col, (icon, title, desc) in zip(st.columns(3), framework):
         st.markdown(f'<div class="card"><div class="icon">{icon}</div><h4>{title}</h4><p>{desc}</p></div>', unsafe_allow_html=True)
+
+    # —— 简略版：仅保留关键结论，跳过图表与逐组件展开明细 ——
+    if is_lite:
+        st.markdown('<div class="sec-title" style="margin-top:24px;">① AI as Judge · 能力上限（关键结论）</div><div class="sec-sub">17 条代表性 Query，第三方大模型盲评，满分 30</div>', unsafe_allow_html=True)
+        st.markdown(f"""
+        <div class="card" style="margin-top:8px;">
+          <h4>📐 统计检验（Fin Synagent vs 基线模型）</h4>
+          <p>在 17 条 Query 上做配对检验：<b>Fin Synagent 平均 28.41 分</b>，显著高于 Kimi AI 的 26.41 分（均值差 <b>+2.00</b>）、Spark Ultra 的 26.47 分（均值差 +1.94）。
+          配对 t 检验：95% 置信区间 (0.74, 3.26) · <b>P-value = 0.0023 &lt; 0.01</b>，差异在 1% 水平显著。
+          尤其在白酒、贵金属、红利等细分行业，通用 SOTA 模型常因缺乏行业知识而表现不佳，而 Fin Synagent 凭 RAG + 微调保持稳定的高分。</p>
+        </div>
+        """, unsafe_allow_html=True)
+        st.markdown('<div class="sec-title" style="margin-top:24px;">② AI as Customers · 用户体验（关键结论）</div>', unsafe_allow_html=True)
+        st.markdown("""
+        <div class="card" style="margin-top:8px;">
+          <h4>👥 模拟用户结论</h4>
+          <p>项目普适性较强，<b>尤其适于新手与辅助型用户</b>：投资小白 8 分、业余投资者 9 分、投顾助手 9 分，说明面向非专业用户时能给出结构清晰、可执行的建议。
+          专业投资者 / 财经博主评分偏低（3–6 分），反映系统在深度研究与另类数据上仍有提升空间——属预期内的定位差异，而非体验缺陷。</p>
+        </div>
+        """, unsafe_allow_html=True)
+        st.markdown('<div class="sec-title" style="margin-top:24px;">③ 人工评估 + ④ 消融实验（关键结论）</div><div class="sec-sub">消融实验在相同 17 条 Query、固定随机种子下，仅移除单一组件，量化各模块对 Judge 得分（满分 30）的贡献</div>', unsafe_allow_html=True)
+        abl = [
+            {"配置": "完整 Fin Synagent", "Judge 得分(满分30)": "28.41", "得分变化": "基线", "主要退化表现": "—"},
+            {"配置": "− 微调组件", "Judge 得分(满分30)": "27.10", "得分变化": "−1.31", "主要退化表现": "行业关键词抓取变弱，建议贴合度下降"},
+            {"配置": "− 工作流(直连星火)", "Judge 得分(满分30)": "25.30", "得分变化": "−3.11", "主要退化表现": "全面性与深度下降，信息零散、缺分工"},
+            {"配置": "− RAG 知识库", "Judge 得分(满分30)": "26.80", "得分变化": "−1.61", "主要退化表现": "事实性下降，偶发幻觉与口径偏差"},
+        ]
+        st.dataframe(pd.DataFrame(abl), use_container_width=True, hide_index=True)
+        st.caption("消融表明：工作流分工作为最大增益项（−3.11），其次为 RAG（−1.61）与微调（−1.31）；三者叠加构成 Fin Synagent 相对通用大模型的核心优势。简略版仅展示关键结论，完整图表与逐组件对比请切换到「标准版」。数值为演示用模拟评测结果。")
+        return
 
     # 一、AI as Judge · 能力上限
     st.markdown('<div class="sec-title" style="margin-top:24px;">① AI as Judge · 能力上限评测</div><div class="sec-sub">17 条覆盖白酒 / 红利 / 贵金属 / 宏观的代表性 Query，由第三方大模型盲评；rubric 四维度各 7.5 分，合计 30</div>', unsafe_allow_html=True)
@@ -2902,6 +2933,7 @@ RESUME_TECH = (
 )
 
 def page_interview():
+    is_lite = st.session_state.get("mode") == "lite"
     st.markdown("""
     <div class="hero hero-mini">
       <div class="kicker">Interview Playbook · STAR & Tech Q&A</div>
@@ -2934,19 +2966,25 @@ def page_interview():
                 """, unsafe_allow_html=True)
 
     # 第二部分 · 技术高频问答（按 RAG / 微调 / 通用归类，扁平展示）
-    with st.expander("第二部分 · 技术高频问答（RAG / 微调 / 通用 · 点击展开/收起）", expanded=True):
+    with st.expander("第二部分 · 技术高频问答（RAG / 微调 / 通用 · 点击展开/收起）", expanded=(not is_lite)):
         tech_groups = [
             ("📚 RAG 与知识库", INTERVIEW_TECH_RAG),
             ("🔧 微调与训练", INTERVIEW_TECH_FT),
             ("🤖 通用大模型与工程", INTERVIEW_TECH_GEN),
         ]
         for g_title, g_items in tech_groups:
-            st.markdown(f'<div class="sec-title" style="margin-top:10px;font-size:1.02rem;">{g_title}（{len(g_items)} 题）</div>', unsafe_allow_html=True)
-            for item in g_items:
+            _shown = [it for it in g_items if (not is_lite or (bool(it[2]) if len(it) > 2 else False))]
+            if not _shown:
+                continue
+            _g_count = len(_shown) if is_lite else len(g_items)
+            st.markdown(f'<div class="sec-title" style="margin-top:10px;font-size:1.02rem;">{g_title}（{_g_count} 题）</div>', unsafe_allow_html=True)
+            for item in _shown:
                 q, a = item[0], item[1]
                 star = bool(item[2]) if len(item) > 2 else False
                 with st.expander(f"**{'⭐ ' if star else ''}{q}**"):
                     st.markdown(a)
+    if is_lite:
+        st.caption("简略版仅展示标星（⭐）高频技术题；完整 22 题技术问答请切换到「标准版」。")
 
 # ============================================================== 页面：RAG 知识库
 def _n(x):
@@ -2967,6 +3005,43 @@ def render_kb():
 
     stats = KB.get("kb_stats", {})
     retrieval = KB.get("retrieval", {})
+    is_lite = st.session_state.get("mode") == "lite"
+    if is_lite:
+        # —— 简略版：仅保留关键部分（规模 KPI + 核心检索指标）——
+        st.markdown('<div class="sec-title">RAG 知识库规模</div><div class="sec-sub">权威 PDF → 语义切分 → bge 中文向量化 → Chroma 4 个行业 collection</div>', unsafe_allow_html=True)
+        kpi = [
+            (_n(stats.get("total_docs", 0)), "权威 PDF 文档"),
+            (_n(stats.get("total_chunks", 0)), "语义 chunk 片段"),
+            ("4", "行业 collection"),
+            ("512", "bge 向量维度"),
+        ]
+        for col, (v, k) in zip(st.columns(4), kpi):
+            with col:
+                st.markdown(f'<div class="kpi"><div class="v">{v}</div><div class="k">{k}</div></div>', unsafe_allow_html=True)
+        st.caption("四个 collection 即四个独立知识域，Consult 检索时按问题所属行业路由。")
+        evaluation = KB.get("retrieval_eval", {})
+        eval_overall = evaluation.get("overall", {})
+        n_samples = sum(len(h) for qq in retrieval.values() for h in qq.values())
+        st.markdown('<div class="sec-title" style="margin-top:24px;">RAG 检索评价指标</div><div class="sec-sub">指标由真实召回片段实时统计（路由正确性 + 余弦相似度）</div>', unsafe_allow_html=True)
+        kpis_row1 = [
+            (f'{eval_overall.get("recall@5", 0):.1%}', "Recall@5（行业路由）"),
+            (f'{eval_overall.get("mrr", 0):.3f}', "MRR 平均倒数排名"),
+            (f'{eval_overall.get("ndcg@5", 0):.3f}', "NDCG@5"),
+            (f'{eval_overall.get("purity@5", 0):.1%}', "行业纯度@5"),
+        ]
+        kpis_row2 = [
+            (f'{eval_overall.get("source_coverage_top5", 0):.2f}', "Top-5 来源覆盖数"),
+            (f'{float(eval_overall.get("sim_dist", {}).get("top5", {}).get("mean", 0) or 0):.3f}', "Top-5 平均余弦相似度"),
+            (f'{_n(n_samples)}', "检索样本总数"),
+        ]
+        for col, (v, k) in zip(st.columns(4), kpis_row1):
+            with col:
+                st.markdown(f'<div class="kpi"><div class="v">{v}</div><div class="k">{k}</div></div>', unsafe_allow_html=True)
+        for col, (v, k) in zip(st.columns(3), kpis_row2):
+            with col:
+                st.markdown(f'<div class="kpi"><div class="v">{v}</div><div class="k">{k}</div></div>', unsafe_allow_html=True)
+        st.caption("理想目标：Recall@5≥0.95、MRR 0.98、NDCG@5 0.97、纯度 0.98、Top-5 余弦≥0.78、来源覆盖≥3。简略版仅展示关键指标，检索样本浏览器、指标释义、相似度分布与全流程详解请切换到「标准版」。")
+        return
     # 一、RAG 知识库规模
     st.markdown('<div class="sec-title">RAG 知识库规模</div><div class="sec-sub">PDF → Markdown → 语义切分 → 中文向量化（bge 512 维）→ Chroma 持久化（4 个行业 collection）</div>', unsafe_allow_html=True)
     kpi = [
@@ -3328,6 +3403,23 @@ def page_glossary():
     cats = gl.get("categories", [])
     total = sum(len(c.get("terms", [])) for c in cats)
     n_star = sum(1 for c in cats for t in c.get("terms", []) if _is_core(t))
+    is_lite = st.session_state.get("mode") == "lite"
+    if is_lite:
+        # —— 简略版：仅展示各分组的⭐核心术语 ——
+        st.markdown(f'<div class="pill">⭐ 核心术语 {n_star} 条</div>', unsafe_allow_html=True)
+        for c in cats:
+            core = [t for t in c.get("terms", []) if _is_core(t)]
+            if not core:
+                continue
+            st.markdown(f'<div class="sec-title" style="margin-top:14px;">{c.get("icon", "•")} {c.get("name", "")} · 核心术语（{len(core)} 条）</div>', unsafe_allow_html=True)
+            rows = "".join(
+                f'<div class="gloss-card">'
+                f'<div class="gt{" gt-star" if _is_core(t) else ""}">{"⭐ " if _is_core(t) else ""}{t.get("term","")}</div>'
+                f'<div class="gd">{t.get("def","")}</div>'
+                f'</div>' for t in core)
+            st.markdown(f'<div class="gloss-grid">{rows}</div>', unsafe_allow_html=True)
+        st.caption(f"简略版仅展示各分组的⭐核心术语；完整 {total} 条术语表请切换到「标准版」。")
+        return
     st.markdown(
         f'<div class="pill">分组 {len(cats)} 类</div>'
         f'<div class="pill">收录术语 {total} 条</div>'
@@ -3405,9 +3497,11 @@ NAV_ICONS = [
     "book", "chat-dots",
 ]
 
-# 简略版（精简模式）：仅保留核心页面，技术底座与附录参考归入标准版
-NAV_PAGES_LITE = ["首页", "智能咨询", "智能荐股", "技能中心"]
-NAV_ICONS_LITE = ["house-door", "chat-square-text", "graph-up-arrow", "puzzle"]
+# 简略版（精简模式）：核心页 + 技术/附录页（这些页在简略版下只渲染关键部分）
+NAV_PAGES_LITE = ["首页", "智能咨询", "智能荐股", "技能中心",
+                  "测试评估", "RAG 知识库", "专有名词解释", "面试建议"]
+NAV_ICONS_LITE = ["house-door", "chat-square-text", "graph-up-arrow", "puzzle",
+                  "bar-chart", "book", "card-text", "chat-dots"]
 
 def _on_nav_change(key):
     """单一导航菜单被点击时触发：把当前选中页写入全局 nav 并刷新。"""
