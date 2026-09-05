@@ -3396,12 +3396,12 @@ def page_rag_kb():
 # 导航（单一菜单，按受众顺序平铺：产品体验 → 技术底座 → 附录参考）
 NAV_PAGES = [
     "首页", "智能咨询", "智能荐股",
-    "星火大模型", "技术设计", "测试评估", "RAG 知识库", "技能中心",
+    "星火大模型", "测试评估", "RAG 知识库", "技能中心", "技术设计",
     "专有名词解释", "面试建议",
 ]
 NAV_ICONS = [
     "house-door", "chat-square-text", "graph-up-arrow",
-    "fire", "cpu", "bar-chart", "book", "puzzle",
+    "fire", "bar-chart", "book", "puzzle", "cpu",
     "book", "chat-dots",
 ]
 
