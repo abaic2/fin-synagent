@@ -3393,21 +3393,21 @@ def page_rag_kb():
     """, unsafe_allow_html=True)
     render_kb()
 
-# 导航分组（按受众）：产品体验 / 技术底座 / 附录参考
-NAV_GROUPS = [
-    ("产品体验", ["首页", "智能咨询", "智能荐股"], ["house-door", "chat-square-text", "graph-up-arrow"]),
-    ("技术底座", ["星火大模型", "技术设计", "测试评估", "RAG 知识库", "技能中心"], ["fire", "cpu", "bar-chart", "book", "puzzle"]),
-    ("附录参考", ["专有名词解释", "面试建议"], ["book", "chat-dots"]),
+# 导航（单一菜单，按受众顺序平铺：产品体验 → 技术底座 → 附录参考）
+NAV_PAGES = [
+    "首页", "智能咨询", "智能荐股",
+    "星火大模型", "技术设计", "测试评估", "RAG 知识库", "技能中心",
+    "专有名词解释", "面试建议",
+]
+NAV_ICONS = [
+    "house-door", "chat-square-text", "graph-up-arrow",
+    "fire", "cpu", "bar-chart", "book", "puzzle",
+    "book", "chat-dots",
 ]
 
 def _on_nav_change(key):
-    """侧边栏某个分组的 option_menu 被点击时触发。
-    直接写其它已实例化 widget 的 key 会被 Streamlit 忽略并导致多高亮，
-    因此只标记全局 pending，再由下一轮 rerun 前的同步块统一重置各分组 key。"""
-    _sel = st.session_state[key]
-    st.session_state["nav"] = _sel
-    st.session_state["_nav_pending"] = True
-    st.session_state["_nav_pending_page"] = _sel
+    """单一导航菜单被点击时触发：把当前选中页写入全局 nav 并刷新。"""
+    st.session_state["nav"] = st.session_state[key]
     st.rerun()
 
 
@@ -3430,7 +3430,6 @@ PAGES = {
     "专有名词解释": page_glossary,
     "技能中心": page_skills,
 }
-NAV_ICONS = ["house-door", "chat-square-text", "graph-up-arrow", "fire", "cpu", "bar-chart", "book", "chat-dots", "book", "puzzle"]
 
 with st.sidebar:
     st.markdown("""
@@ -3441,21 +3440,19 @@ with st.sidebar:
     """, unsafe_allow_html=True)
     if "nav" not in st.session_state:
         st.session_state["nav"] = "首页"
-    # 首轮：初始化各分组 widget key（此时 widget 尚未实例化，直接赋值安全）
-    for _t, _o, _i in NAV_GROUPS:
-        _k = "nav_" + _t
-        if _k not in st.session_state:
-            st.session_state[_k] = st.session_state["nav"] if st.session_state["nav"] in _o else _o[0]
-    # 编程式跳转的同步：必须在 widget 实例化之前重置各分组 key，避免双高亮与直接写 widget key 报错
+    # 编程式跳转（首页卡片/按钮）的回写必须在 option_menu 实例化之前完成，
+    # 否则直接写已实例化的 widget key 会触发 StreamlitWidgetAlreadyInstantiatedError
     if st.session_state.get("_nav_pending"):
         _p = st.session_state.get("_nav_pending_page")
-        for _t, _o, _i in NAV_GROUPS:
-            st.session_state["nav_" + _t] = _p if _p in _o else _o[0]
+        st.session_state["nav_main"] = _p if _p in NAV_PAGES else NAV_PAGES[0]
         st.session_state["_nav_pending"] = False
+    if "nav_main" not in st.session_state:
+        st.session_state["nav_main"] = st.session_state["nav"] if st.session_state["nav"] in NAV_PAGES else NAV_PAGES[0]
     SB_STYLES = {
         "container": {
             "padding": "10px 8px", "background-color": "#0E2450",
-            "border-radius": "14px", "border": "1px solid rgba(201,162,39,0.35)",
+            "border-radius": "14px", "border": "2px solid rgba(201,162,39,0.55)",
+            "box-shadow": "0 0 0 3px rgba(201,162,39,0.12)",
         },
         "icon": {"color": "#E8C766", "font-size": "16px"},
         "menu-title": {
@@ -3477,35 +3474,12 @@ with st.sidebar:
             "border-left": "4px solid #E8C766",
         },
     }
-    # 每个分组一个 option_menu；点击经 on_change 派发。
-    # 由于每个分组必须有一个选中项，非当前页所在的分组会把「选中样式」设为与普通链接一致，
-    # 从视觉上保证只有当前页所在分组有金色高亮。
-    # 为让「当前在哪个分区」也一目了然：当前分组用金色边框 + 金色标题条 + 「● 当前」标识，
-    # 非当前分组标题与边框均变灰，整组视觉退居次要。
-    for _title, _opts, _icons in NAV_GROUPS:
-        _key = "nav_" + _title
-        _active = st.session_state["nav"] in _opts
-        _default = _opts.index(st.session_state["nav"]) if _active else 0
-        if _active:
-            _styles = {
-                **SB_STYLES,
-                "container": {**SB_STYLES["container"], "border": "2px solid #E8C766",
-                              "box-shadow": "0 0 0 3px rgba(201,162,39,0.18)"},
-                "menu-title": {**SB_STYLES["menu-title"], "background": "linear-gradient(90deg, #E8C766, #F3D98A)",
-                               "color": "#0E2450", "border-radius": "8px 8px 0 0", "padding": "10px 12px"},
-                "nav-link-selected": SB_STYLES["nav-link-selected"],
-            }
-            _menu_title = _title + "　● 当前"
-        else:
-            _styles = {
-                **SB_STYLES,
-                "menu-title": {**SB_STYLES["menu-title"], "color": "#7E8DB5"},
-                "nav-link-selected": SB_STYLES["nav-link"],
-            }
-            _menu_title = _title
-        option_menu(menu_title=_menu_title, options=_opts, icons=_icons,
-                    default_index=_default, key=_key, styles=_styles,
-                    on_change=_on_nav_change)
+    # 单一合并菜单：所有页面平铺在一个 option_menu 中，当前页金色高亮，
+    # 不存在多分组各自选中导致的“多高亮 / 难辨当前页”问题
+    _default = NAV_PAGES.index(st.session_state["nav"]) if st.session_state["nav"] in NAV_PAGES else 0
+    option_menu(menu_title="导航", options=NAV_PAGES, icons=NAV_ICONS,
+                default_index=_default, key="nav_main", styles=SB_STYLES,
+                on_change=_on_nav_change)
     st.markdown("---")
     st.caption("富国开贸团队 · 演示 Demo v2")
     st.caption("⚠️ 数据为模拟数据，不构成投资建议")
