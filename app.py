@@ -3480,12 +3480,30 @@ with st.sidebar:
     # 每个分组一个 option_menu；点击经 on_change 派发。
     # 由于每个分组必须有一个选中项，非当前页所在的分组会把「选中样式」设为与普通链接一致，
     # 从视觉上保证只有当前页所在分组有金色高亮。
+    # 为让「当前在哪个分区」也一目了然：当前分组用金色边框 + 金色标题条 + 「● 当前」标识，
+    # 非当前分组标题与边框均变灰，整组视觉退居次要。
     for _title, _opts, _icons in NAV_GROUPS:
         _key = "nav_" + _title
         _active = st.session_state["nav"] in _opts
         _default = _opts.index(st.session_state["nav"]) if _active else 0
-        _styles = {**SB_STYLES, "nav-link-selected": SB_STYLES["nav-link"] if not _active else SB_STYLES["nav-link-selected"]}
-        option_menu(menu_title=_title, options=_opts, icons=_icons,
+        if _active:
+            _styles = {
+                **SB_STYLES,
+                "container": {**SB_STYLES["container"], "border": "2px solid #E8C766",
+                              "box-shadow": "0 0 0 3px rgba(201,162,39,0.18)"},
+                "menu-title": {**SB_STYLES["menu-title"], "background": "linear-gradient(90deg, #E8C766, #F3D98A)",
+                               "color": "#0E2450", "border-radius": "8px 8px 0 0", "padding": "10px 12px"},
+                "nav-link-selected": SB_STYLES["nav-link-selected"],
+            }
+            _menu_title = _title + "　● 当前"
+        else:
+            _styles = {
+                **SB_STYLES,
+                "menu-title": {**SB_STYLES["menu-title"], "color": "#7E8DB5"},
+                "nav-link-selected": SB_STYLES["nav-link"],
+            }
+            _menu_title = _title
+        option_menu(menu_title=_menu_title, options=_opts, icons=_icons,
                     default_index=_default, key=_key, styles=_styles,
                     on_change=_on_nav_change)
     st.markdown("---")
