@@ -1276,7 +1276,7 @@ def page_home():
     """, unsafe_allow_html=True)
 
 # ============================================================== 页面：Consult
-def run_workflow(query: str, decomp_level: int, use_real=None):
+def _run_workflow_inline(query: str, decomp_level: int, use_real=None):
     script = match_script(query)
     rag_key = next((k for k in ["白酒", "红利", "贵金属"] if k in query), "default")
     rag_hits = get_rag_hits(rag_key, query)
@@ -1417,12 +1417,92 @@ def run_workflow(query: str, decomp_level: int, use_real=None):
     return "\n".join(md)
 
 
+# ============================================================== 智能咨询 · LangGraph 编排入口
+def _consult_on_step(state, step):
+    """LangGraph 每个节点执行后的 UI 回调：在侧边/主区实时渲染该智能体产出。"""
+    agent = step["agent"]
+    with st.status(step["title"], expanded=True) as s:
+        if agent == "retrieve":
+            st.write(
+                f"**检索域**：`{state.get('kb_tag')}` collection · **检索流程**：语义段落切分 → "
+                f"中文向量化（bge 512 维）→ Chroma 持久化 → 查询向量化 → 余弦相似度 Top-K → Prompt 拼接")
+            hits = state.get("rag_hits") or []
+            if hits:
+                for h in hits:
+                    st.markdown(
+                        f'<div class="src">📄 <b>{h["source"]}</b> · p{h["page"]} · 相似度 <b>{h["score"]:.3f}</b><br>'
+                        f'<span style="color:#4A6A56;">{h["text"]}</span></div>', unsafe_allow_html=True)
+            else:
+                st.warning("知识库 bundle 未加载，已回退至通用分析。")
+        else:
+            st.markdown(step["content"])
+        s.update(label=step["title"], state="complete")
+
+
+def _run_consult_graph(query: str, decomp_level: int, use_real=None):
+    """优先用 LangGraph 状态图驱动多智能体流水线；返回与 _run_workflow_inline 同构的 Markdown 字符串。"""
+    import functools
+    from agent_graph import build_initial_state, run_consult  # 延迟导入：缺 langgraph 时由外层捕获并回退
+
+    script = match_script(query)
+    rag_key = next((k for k in ["白酒", "红利", "贵金属"] if k in query), "default")
+    kb_tag = "宏观" if rag_key == "default" else rag_key
+    key_ok = bool((st.session_state.get("ds_api_key", "") or "").strip()
+                  or (st.secrets.get("DEEPSEEK_API_KEY", "") or "").strip() or DS_FALLBACK_KEY)
+    if use_real is None:
+        use_real = (st.session_state.get("app_mode", "real") == "real")
+    real = bool(use_real) and key_ok
+
+    md = ["##### 🔄 多智能体协同工作流（透明可观测 · LangGraph 状态图编排）", ""]
+    if not real:
+        md.append("> " + ("⚠️ 已选真实模式但未配置 Key，已回退演示。" if (use_real and not key_ok)
+                          else "🟠 演示模式：以下为内置示例回复。"))
+        md.append("")
+
+    init = build_initial_state(
+        query=query, decomp_level=decomp_level, rag_key=rag_key, kb_tag=kb_tag,
+        real=real, script=script,
+        llm_text=functools.partial(_ds_text, allow_real=real),
+        rag_fn=get_rag_hits,
+        max_loop=2,
+        on_step=_consult_on_step,
+    )
+    final = run_consult(init)
+
+    # 将 trace 整理为可存入聊天历史的 Markdown（与 inline 版结构一致）
+    for step in final.get("trace", []):
+        if step["agent"] == "retrieve":
+            md.append(f"**📚 知识库检索（RAG）** · 命中高相关片段")
+            md.append(f"- 检索域：`{final.get('kb_tag')}` collection · 流程：语义段落切分 → 中文向量化（bge 512 维）→ "
+                      f"Chroma 持久化 → 查询向量化 → 余弦相似度 Top-K → Prompt 拼接")
+            for h in final.get("rag_hits", []):
+                md.append(f"- 📄 **{h['source']}** · p{h['page']} · 相似度 **{h['score']:.3f}**")
+            else:
+                md.append("- ⚠️ 知识库 bundle 未加载，已回退至通用分析。")
+        else:
+            md.append(f"**{step['title']}**")
+            md.append(step["content"])
+        md.append("")
+    st.success(final.get("summary", ""))
+    st.caption("💡 您可以继续追问（如：现在市场看好吗？短期还是长期持有？），系统将结合上下文持续回答。")
+    md.append("💡 您可以继续追问（如：现在市场看好吗？短期还是长期持有？），系统将结合上下文持续回答。")
+    return "\n".join(md)
+
+
+def run_workflow(query: str, decomp_level: int, use_real=None):
+    """智能咨询主入口：优先走 LangGraph 编排；若 langgraph 未安装或编排异常，回退到内置顺序实现。"""
+    try:
+        return _run_consult_graph(query, decomp_level, use_real)
+    except Exception:
+        return _run_workflow_inline(query, decomp_level, use_real)
+
+
 def page_consult():
     st.markdown("""
     <div class="hero hero-mini">
       <div class="kicker">Consult · Multi-Agent Reasoning</div>
       <h1 style="font-size:2rem;">💬 智能投顾咨询</h1>
-      <div class="sub" style="margin-bottom:0;">System-2 深思熟虑 · Multi-Agent 互相监督 · Web 检索 &amp; 知识库求证 · 显式思维链</div>
+      <div class="sub" style="margin-bottom:0;">System-2 深思熟虑 · LangGraph 状态图编排 Multi-Agent · 批评—修订回环 · 知识库求证 · 显式思维链</div>
     </div>
     """, unsafe_allow_html=True)
 
