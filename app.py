@@ -21,16 +21,42 @@ KB_DATA_PATH = os.path.join(os.path.dirname(__file__), "kb_data.json")
 SCRIPTS_DIR = os.path.join(os.path.dirname(__file__), "scripts")
 # 技能内置的 references 知识文档目录（随 Demo 一同部署，页面可展开渲染并下载）
 REFERENCES_DIR = os.path.join(os.path.dirname(__file__), "references")
-@st.cache_data
-def load_kb_data(version="v1"):
-    """加载由 knowledge_base/Chroma 真实检索 + 微调数据集统计生成的 bundle。"""
-    _ = version  # 用于数据格式更新时强制刷新 cache
-    try:
-        with open(KB_DATA_PATH, encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
+# 记录知识库 bundle 加载失败原因，避免「未加载」成为无法排查的谜团
+KB_LOAD_ERROR = None
+
+def _read_kb_bundle(path):
+    """读取离线知识库 bundle，返回 (data, None) 或 (None, error_msg)。
+    兼容性：用 utf-8-sig 容忍带 BOM 的文件；缺失/损坏/结构异常均给出可读原因。"""
+    global KB_LOAD_ERROR
+    if not os.path.exists(path):
+        KB_LOAD_ERROR = f"文件不存在：{path}"
         return None
+    try:
+        with open(path, encoding="utf-8-sig") as f:  # utf-8-sig 兼容带 BOM 的源文件
+            data = json.load(f)
+    except Exception as e:
+        KB_LOAD_ERROR = f"JSON 解析失败：{type(e).__name__}：{e}"
+        return None
+    if not isinstance(data, dict) or "retrieval" not in data:
+        KB_LOAD_ERROR = "结构异常：缺少 'retrieval' 字段，可能不是有效的知识库 bundle"
+        return None
+    KB_LOAD_ERROR = None
+    return data
+
+@st.cache_data(show_spinner=False)
+def load_kb_data(version="v1"):
+    """加载由 knowledge_base/Chroma 真实检索 + 微调数据集统计生成的离线 bundle。"""
+    _ = version  # 数据格式更新时改 version 即可强制刷新 cache（不影响文件读取）
+    return _read_kb_bundle(KB_DATA_PATH)
+
 KB = load_kb_data(version="v2")
+if KB is None:
+    import sys
+    print(f"[FinSynagent] WARNING: kb_data.json 未加载 -> {KB_LOAD_ERROR}", file=sys.stderr)
+
+def kb_unload_reason():
+    """返回知识库未加载的可读原因，供告警文案与日志复用。"""
+    return KB_LOAD_ERROR or "未知原因"
 
 st.set_page_config(
     page_title="Fin Synagent · 多智能体协同智能投顾",
@@ -1327,7 +1353,7 @@ def _run_workflow_inline(query: str, decomp_level: int, use_real=None):
                     f'<div class="src">📄 <b>{h["source"]}</b> · p{h["page"]} · 相似度 <b>{h["score"]:.3f}</b><br>'
                     f'<span style="color:#4A6A56;">{h["text"]}</span></div>', unsafe_allow_html=True)
         else:
-            st.warning("知识库 bundle 未加载，已回退至通用分析。")
+            st.warning(f"知识库 bundle 未加载（{kb_unload_reason()}），已回退至通用分析。")
         s.update(label="📚 **知识库检索（RAG）** · 命中高相关片段，已注入专家提示词", state="complete")
     md.append(f"**📚 知识库检索（RAG）** · 命中高相关片段")
     md.append(f"- 检索域：`{kb_tag}` collection · 流程：语义段落切分 → 中文向量化（bge 512 维）→ Chroma 持久化 → 查询向量化 → 余弦相似度 Top-K → Prompt 拼接")
@@ -1335,7 +1361,7 @@ def _run_workflow_inline(query: str, decomp_level: int, use_real=None):
         for h in rag_hits:
             md.append(f"- 📄 **{h['source']}** · p{h['page']} · 相似度 **{h['score']:.3f}**")
     else:
-        md.append("- ⚠️ 知识库 bundle 未加载，已回退至通用分析。")
+        md.append(f"- ⚠️ 知识库 bundle 未加载（{kb_unload_reason()}），已回退至通用分析。")
     md.append("")
 
     # 3) 专家智能体：基于检索片段生成专业回答（流式打字机）
@@ -1433,7 +1459,7 @@ def _consult_on_step(state, step):
                         f'<div class="src">📄 <b>{h["source"]}</b> · p{h["page"]} · 相似度 <b>{h["score"]:.3f}</b><br>'
                         f'<span style="color:#4A6A56;">{h["text"]}</span></div>', unsafe_allow_html=True)
             else:
-                st.warning("知识库 bundle 未加载，已回退至通用分析。")
+                st.warning(f"知识库 bundle 未加载（{kb_unload_reason()}），已回退至通用分析。")
         else:
             st.markdown(step["content"])
         s.update(label=step["title"], state="complete")
@@ -1478,7 +1504,7 @@ def _run_consult_graph(query: str, decomp_level: int, use_real=None):
             for h in final.get("rag_hits", []):
                 md.append(f"- 📄 **{h['source']}** · p{h['page']} · 相似度 **{h['score']:.3f}**")
             else:
-                md.append("- ⚠️ 知识库 bundle 未加载，已回退至通用分析。")
+                md.append(f"- ⚠️ 知识库 bundle 未加载（{kb_unload_reason()}），已回退至通用分析。")
         else:
             md.append(f"**{step['title']}**")
             md.append(step["content"])
@@ -3158,7 +3184,7 @@ def _rag_step(t, d, eg):
 
 def render_kb():
     if not KB:
-        st.error("知识库 bundle（kb_data.json）未加载，请确认文件存在于 fin_synagent/ 目录。")
+        st.error(f"知识库 bundle（kb_data.json）未加载：{kb_unload_reason()}。请确认文件存在且为有效 JSON。")
         return
 
     stats = KB.get("kb_stats", {})
