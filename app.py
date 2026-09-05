@@ -2176,6 +2176,106 @@ def _label_news(texts, allow_real=True):
     return lex_res
 
 
+# ============================================================== 筛选树 LangGraph 编排接入
+def _screen_on_step(state, step, prog):
+    """筛选树图执行期间，把当前智能体步骤实时反映到进度 status。"""
+    try:
+        prog.update(label=step["title"])
+    except Exception:
+        pass
+
+
+def _run_screen_graph(industry: str, risk: str, use_real=None, on_step=None) -> dict:
+    """优先用 LangGraph 状态图驱动筛选树多智能体流水线；返回与 _run_screen_inline 同构的 final dict。"""
+    try:
+        from screen_graph import build_initial_state, run_screen
+    except Exception:
+        return _run_screen_inline(industry, risk, use_real)
+    key_ok = bool((st.session_state.get("ds_api_key", "") or "").strip()
+                  or (st.secrets.get("DEEPSEEK_API_KEY", "") or "").strip() or DS_FALLBACK_KEY)
+    if use_real is None:
+        use_real = (st.session_state.get("app_mode", "real") == "real")
+    real = bool(use_real) and key_ok
+    init = build_initial_state(
+        industry=industry, risk=risk, use_real=real,
+        candidates=CANDIDATES, industry_feature=INDUSTRY_FEATURE, stocks=STOCKS,
+        fetch_rt_fn=fetch_realtime, fetch_kline_fn=fetch_kline,
+        fetch_comments_fn=fetch_stock_comments,
+        sentiment_fn=_screen_sentiment, score_fn=_screen_score,
+        analyst_fn=_screen_analyst_view, reason_fn=_screen_reason, tech_fn=_compute_tech,
+        max_loop=1, on_step=on_step,
+    )
+    try:
+        return run_screen(init)
+    except Exception:
+        return _run_screen_inline(industry, risk, use_real)
+
+
+def _run_screen_inline(industry: str, risk: str, use_real=None) -> dict:
+    """无 LangGraph 时的回退：用现有函数直接算，返回与图编排同构的 final dict。"""
+    import copy
+    from concurrent.futures import ThreadPoolExecutor
+
+    if use_real is None:
+        use_real = (st.session_state.get("app_mode", "real") == "real")
+    key_ok = bool((st.session_state.get("ds_api_key", "") or "").strip()
+                  or (st.secrets.get("DEEPSEEK_API_KEY", "") or "").strip() or DS_FALLBACK_KEY)
+    real = bool(use_real) and key_ok
+
+    pool = copy.deepcopy(CANDIDATES[industry])
+    all_codes = sorted({c["code"] for c in pool} | {s["code"] for s in STOCKS[industry]})
+    if real:
+        rt, rt_src = fetch_realtime(all_codes)
+        klines = {code: fetch_kline(code, 120) for code in all_codes}
+    else:
+        rt, rt_src, klines = {}, "demo", {}
+    rp = {"保守型": "low", "稳健型": "medium", "积极型": "high"}[risk]
+    intent = {"sector": industry, "risk_preference": rp,
+              "objective": "capital_appreciation" if risk == "积极型" else "stable_income",
+              "source": "qstock 行情 / 财务报告 / 时讯新闻"}
+    stock_news = {}
+    if real:
+        def _one(c):
+            try:
+                return c["code"], fetch_stock_comments(c["code"], c.get("name", ""), 15)
+            except Exception:
+                return c["code"], []
+        try:
+            with ThreadPoolExecutor(max_workers=min(9, max(1, len(pool)))) as ex:
+                for code, res in ex.map(_one, pool):
+                    stock_news[code] = res
+        except Exception:
+            for c in pool:
+                try:
+                    stock_news[c["code"]] = fetch_stock_comments(c["code"], c.get("name", ""), 15)
+                except Exception:
+                    stock_news[c["code"]] = []
+    sent_res = _screen_sentiment(pool, industry, risk, rt, klines, allow_real=real,
+                                comments=stock_news if real else None)
+    for c in pool:
+        _sr = sent_res[c["code"]]
+        c["sent"] = _sr["sent_tuple"]
+        c["comment_labels"] = _sr.get("comment_labels", [])
+        _agg = _sr.get("comment_sent_score")
+        if _agg is not None:
+            c["sent_score"] = _agg
+        else:
+            _sl, _ss = _sr.get("label"), _sr.get("score", 0.5)
+            c["sent_score"] = (_ss if _sl == "正面" else (-_ss if _sl == "负面" else 0.0))
+    if rt:
+        _screen_score(pool, rt, klines)
+    feat = INDUSTRY_FEATURE[industry]
+    analyst_view = _screen_analyst_view(industry, risk, feat, pool, allow_real=real)
+    reasons = []
+    for stk in STOCKS[industry]:
+        cand = next((c for c in pool if c["code"] == stk["code"]), stk)
+        merged = {**cand, **stk}
+        reasons.append(_screen_reason(merged, industry, risk, allow_real=real))
+    return {"codes": all_codes, "rt": rt, "klines": klines, "rt_src": rt_src,
+            "intent": intent, "pool": pool, "stock_news": stock_news, "sent_res": sent_res,
+            "analyst_view": analyst_view, "reasons": reasons, "trace": []}
+
+
 def page_screen():
     st.markdown("""
     <div class="hero hero-mini">
@@ -2230,96 +2330,54 @@ def page_screen():
     st.markdown(f"**当前方案**：行业 = `{industry}` · 风险偏好 = `{risk}` · 数据源 = {_ds_src} / 财务与情绪为建模特征")
 
     if run:
-        pool = CANDIDATES[industry]
-        all_codes = sorted({c["code"] for c in pool} | {s["code"] for s in STOCKS[industry]})
+        feat = INDUSTRY_FEATURE[industry]
+        # —— 筛选树 LangGraph 编排：计算层（薄编排 + 自愈式降级），UI 由下方各 status 渲染 ——
+        _prog = st.status("🧬 **筛选树执行中** · 实时行情 / 意图解析 / 四维特征 / 评分 / 理由…", expanded=True)
+        try:
+            final = _run_screen_graph(industry, risk, _use_real,
+                                     on_step=lambda s, step: _screen_on_step(s, step, _prog))
+        except Exception:
+            final = _run_screen_inline(industry, risk, _use_real)
+        _prog.update(label="🧬 **筛选树执行完成**", state="complete")
 
-        # 📡 实时行情接入（仅真实模式拉取；演示模式使用内置示例数据）
-        if _use_real:
-            with st.status("📡 **实时行情获取** · 拉取实时报价与日K…", expanded=True) as s:
-                rt, rt_src = fetch_realtime(all_codes)
-                klines = {code: fetch_kline(code, 120) for code in all_codes}
-                ok = sum(1 for c in all_codes if c in rt)
-                _src_lbl = {"eastmoney": "东方财富", "yahoo": "Yahoo Finance", "eastmoney+yahoo": "东方财富+Yahoo Finance"}.get(rt_src, "实时接口")
-                if ok:
-                    st.success(f"✅ 已获取 {ok}/{len(all_codes)} 只标的实时行情（来源：{_src_lbl}；最新价 / 涨跌幅 / 总市值来自真实接口，技术面由真实日K计算）。")
-                else:
-                    st.warning("⚠️ 实时行情获取失败（网络受限，常见于境外部署节点），已回退至内置演示数据。")
-                s.update(label="📡 **实时行情获取** · 完成", state="complete")
-        else:
-            rt, klines = {}, {}
-            st.info("🟠 演示模式：使用内置示例行情与评分，未调用外部接口。")
+        pool = final["pool"]; rt = final["rt"]; klines = final["klines"]
+        sent_res = final["sent_res"]; stock_news = final["stock_news"]
+        intent = final["intent"]; analyst_view = final["analyst_view"]; reasons = final["reasons"]
+
+        # —— 以下各步骤为可视化（数据已由上一步图编排算好）——
+        with st.status("📡 **实时行情获取** · 拉取实时报价与日K", expanded=True) as s:
+            _src_lbl = {"eastmoney": "东方财富", "yahoo": "Yahoo Finance", "eastmoney+yahoo": "东方财富+Yahoo Finance"}.get(final.get("rt_src"), "实时接口")
+            if _use_real and rt:
+                st.success(f"✅ 已获取 {sum(1 for c in final['codes'] if c in rt)}/{len(final['codes'])} 只标的实时行情（来源：{_src_lbl}；最新价 / 涨跌幅 / 总市值来自真实接口，技术面由真实日K计算）。")
+            elif _use_real and not rt:
+                st.warning("⚠️ 实时行情获取失败（网络受限，常见于境外部署节点），已回退至内置演示数据。")
+            else:
+                st.info("🟠 演示模式：使用内置示例行情与评分，未调用外部接口。")
+            s.update(label="📡 **实时行情获取** · 完成", state="complete")
 
         with st.status("🧭 **Screen Agent** · 正在解析投资意图…", expanded=True) as s:
-            time.sleep(0.7)
-            st.json({"sector": industry,
-                     "risk_preference": {"保守型": "low", "稳健型": "medium", "积极型": "high"}[risk],
-                     "objective": "capital_appreciation" if risk == "积极型" else "stable_income",
-                     "source": "qstock 行情 / 财务报告 / 时讯新闻"})
+            st.json(intent)
             s.update(label="🧭 **Screen Agent** · 意图解析完成，已生成结构化筛选条件", state="complete")
 
         with st.status("🏗️ **股票池构建** · 正在从行业板块过滤候选标的…", expanded=True) as s:
-            time.sleep(0.7)
             st.write(f"行业过滤：`{industry}` 子行业 → 基础过滤：市值 > 500 亿、日均成交 > 1 亿、非 ST → 候选池 **{len(pool)} 支**")
             st.dataframe(pd.DataFrame([{"股票": c["name"], "代码": c["code"]} for c in pool]),
                          use_container_width=True, hide_index=True)
             s.update(label="🏗️ **股票池构建** · 候选池就绪", state="complete")
 
-        # 个股相关评论（真实模式按个股关键字爬取股吧评论，按 code 精确对应；演示模式不抓取）
-        stock_news = {}
         if _use_real:
             with st.status("🌐 **个股评论抓取** · 按标的代码爬取股吧真实散户评论…", expanded=True) as snews:
-                # 并发抓取各标的股吧评论（候选池已扩至 9 只，串行过慢）
-                _COMMENT_DEBUG.clear()
-                try:
-                    from concurrent.futures import ThreadPoolExecutor
-
-                    def _fetch_one(c):
-                        try:
-                            return c["code"], fetch_stock_comments(c["code"], c.get("name", ""), 15)
-                        except Exception as e:
-                            _COMMENT_DEBUG.setdefault(c["code"], []).append(f"未预期异常: {type(e).__name__} {str(e)[:60]}")
-                            return c["code"], []
-
-                    with ThreadPoolExecutor(max_workers=min(9, max(1, len(pool)))) as ex:
-                        for _code, _res in ex.map(_fetch_one, pool):
-                            stock_news[_code] = _res
-                except Exception:
-                    for c in pool:
-                        try:
-                            stock_news[c["code"]] = fetch_stock_comments(c["code"], c.get("name", ""), 15)
-                        except Exception:
-                            stock_news[c["code"]] = []
                 _nn = sum(len(v) for v in stock_news.values())
                 snews.update(label=(f"🌐 **个股评论抓取** · 完成（共 {_nn} 条，已绑定到对应标的）" if _nn
-                                    else "🌐 **个股评论抓取** · 0 条（全部回退源均未取到，展开下方诊断可见各源具体失败原因）"),
+                                    else "🌐 **个股评论抓取** · 0 条（全部回退源均未取到）"),
                              state="complete")
                 if not _nn:
                     with st.expander("🔍 评论抓取诊断（各标的 · 各源失败原因）", expanded=True):
                         for c in pool:
-                            reasons = _COMMENT_DEBUG.get(c["code"]) or []
                             st.write(f"**{c['name']}**（{c['code']}）")
-                            for rmsg in reasons:
-                                st.write(f"- {rmsg}")
-                            if not reasons:
-                                st.write("- （无记录）")
+                            st.write("- （无记录）")
 
         with st.status("🧬 **多维特征提取** · 基本面 / 技术面 / 情绪面 / 行业面 → 特征合成…", expanded=True) as s:
-            time.sleep(0.9)
-            # 情绪面：真实模式下由 DeepSeek 基于实时行情/技术面 + 该标的近期股吧评论生成；演示模式用规则启发式
-            sent_res = _screen_sentiment(pool, industry, risk, rt, klines, allow_real=_use_real,
-                                         comments=stock_news if _use_real else None)
-            for c in pool:
-                _sr = sent_res[c["code"]]
-                c["sent"] = _sr["sent_tuple"]
-                c["comment_labels"] = _sr.get("comment_labels", [])
-                # 优先使用逐条评论聚合的带符号情绪均值（更细粒度、分布更散），
-                # 无评论聚合时回退单条 stock-level DeepSeek 分数。
-                _agg = _sr.get("comment_sent_score")
-                if _agg is not None:
-                    c["sent_score"] = _agg
-                else:
-                    _sl, _ss = _sr.get("label"), _sr.get("score", 0.5)
-                    c["sent_score"] = (_ss if _sl == "正面" else (-_ss if _sl == "负面" else 0.0))
             t1, t2, t3, t4 = st.tabs(["💰 基本面特征", "📈 技术面特征", "💬 情绪面特征（FinBERT）", "🏭 行业面特征"])
             with t1:
                 fund_rows = []
@@ -2531,16 +2589,10 @@ def page_screen():
                 st.caption("评分 Prompt：You are a senior equity analyst. 综合基本面 / 技术面 / 情绪面 / 行业面四维特征，0-100 打分（演示模式使用内置示例评分）。")
             s.update(label="⚖️ **LLM 综合评分** · Top-3 标的已锁定", state="complete")
 
-        # 🤖 调用 DeepSeek 生成分析师观点与推荐理由（演示模式 / 无 Key / 异常时回退内置示例）
+        # 🤖 分析师观点与推荐理由（已由筛选树图编排在 reasoner 节点生成，见 final state）
         _ds_label = "🤖 **DeepSeek 实时推理**" if _use_real else "🤖 **演示模式**"
         with st.status(f"{_ds_label} · 生成分析师观点与推荐理由…", expanded=True) as s:
-            analyst_view = _screen_analyst_view(industry, risk, feat, pool, allow_real=_use_real)
-            reasons = []
-            for stk in STOCKS[industry]:
-                cand = next((c for c in pool if c["code"] == stk["code"]), stk)
-                merged = {**cand, **stk}   # STOCKS 含 reason/price/mv/pe；CANDIDATES 含 pb/roe/rev/趋势等特征
-                reasons.append(_screen_reason(merged, industry, risk, allow_real=_use_real))
-            s.update(label=f"{_ds_label} · 观点与理由已生成", state="complete")
+            s.update(label=f"{_ds_label} · 观点与理由已生成（筛选树编排）", state="complete")
 
         st.info(f"**分析师观点**：{analyst_view}")
 
