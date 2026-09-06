@@ -53,38 +53,53 @@ if KB is None:
     import sys
     print(f"[FinSynagent] WARNING: kb_data.json 未加载 -> {KB_LOAD_ERROR}", file=sys.stderr)
 
-def kb_unload_reason():
-    """返回知识库未加载的可读原因，永远带上解析路径与真实诊断，避免「未知原因」无头排查。"""
+def _reread_file_diag():
+    """重新读取 kb_data.json 现场，返回文件实际结构诊断（供 KB 健康但检索空时对比）。"""
+    try:
+        with open(KB_DATA_PATH, encoding="utf-8-sig") as f:
+            raw = f.read()
+        real = json.loads(raw)
+        real_type = type(real).__name__
+        real_keys = list(real.keys())[:10] if isinstance(real, dict) else "n/a"
+        return f"文件实际：type={real_type}, len={len(real) if hasattr(real,'__len__') else 'n/a'}, top_keys={real_keys}, 大小={len(raw)}B"
+    except Exception as e:
+        return f"复核读取失败：{type(e).__name__}：{e}"
+
+def kb_unload_reason(rag_key=None):
+    """返回『为何没有检索片段』的可读诊断。重点：KB 已加载 ≠ 检索必有命中，
+    需进一步看 retrieval 子结构。永远带上路径与真实诊断，杜绝『未知原因』。"""
     if KB_LOAD_ERROR:
-        return f"{KB_LOAD_ERROR}（路径：{KB_DATA_PATH}）"
+        return f"KB 加载失败：{KB_LOAD_ERROR}（路径：{KB_DATA_PATH}）"
     if KB is None:
         if not os.path.exists(KB_DATA_PATH):
-            return f"文件不存在（路径：{KB_DATA_PATH}）"
+            return f"KB 文件不存在（路径：{KB_DATA_PATH}）"
         try:
             with open(KB_DATA_PATH, encoding="utf-8-sig") as f:
                 d = json.load(f)
         except Exception as e:
-            return f"JSON 解析失败：{type(e).__name__}：{e}（路径：{KB_DATA_PATH}）"
+            return f"KB JSON 解析失败：{type(e).__name__}：{e}（路径：{KB_DATA_PATH}）"
         if not isinstance(d, dict) or "retrieval" not in d:
-            return f"文件可读取但结构异常：缺少 'retrieval' 字段（路径：{KB_DATA_PATH}）"
-        return f"文件已读取但 KB 仍为 None（路径：{KB_DATA_PATH}）"
-    # KB 非 None 但仍被判定为「未加载」-> 说明 KB 是假值（空 dict/空 list 等异常值）
-    # 直接打印 KB 的真实类型/内容，不再返回无意义的『未知原因』
-    kb_type = type(KB).__name__
-    kb_len = len(KB) if hasattr(KB, "__len__") else "n/a"
-    kb_repr = repr(KB)[:200]
-    try:
-        with open(KB_DATA_PATH, encoding="utf-8-sig") as f:
-            raw = f.read()
-        real_size = len(raw)
-        real = json.loads(raw)
-        real_type = type(real).__name__
-        real_keys = list(real.keys())[:10] if isinstance(real, dict) else "n/a"
-        file_diag = f"文件实际：type={real_type}, len={len(real) if hasattr(real,'__len__') else 'n/a'}, top_keys={real_keys}, 大小={real_size}B"
-    except Exception as e:
-        file_diag = f"复核读取失败：{type(e).__name__}：{e}"
-    return (f"KB 已读取但为假值（type={kb_type}, len={kb_len}, 内容={kb_repr}）；"
-            f"{file_diag}（路径：{KB_DATA_PATH}）")
+            return f"KB 文件结构异常：缺少 'retrieval' 字段（路径：{KB_DATA_PATH}）"
+        return f"KB 文件已读取但解析结果为 None（路径：{KB_DATA_PATH}）"
+    if not bool(KB):
+        kb_type = type(KB).__name__
+        kb_len = len(KB) if hasattr(KB, "__len__") else "n/a"
+        return f"KB 是假值（type={kb_type}, len={kb_len}）；{_reread_file_diag()}（路径：{KB_DATA_PATH}）"
+    # KB 健康加载：钻取 retrieval 子结构，看本次检索域是否有数据
+    retrieval = KB.get("retrieval")
+    ret_keys = list(retrieval.keys()) if isinstance(retrieval, dict) else f"非 dict（{type(retrieval).__name__}）"
+    coll_key = "宏观" if rag_key in (None, "default") else rag_key
+    sub = retrieval.get(coll_key, {}) if isinstance(retrieval, dict) else {}
+    sub_n = len(sub) if isinstance(sub, dict) else "n/a"
+    return (f"KB 已正常加载（顶层 {len(KB)} 键，retrieval 含行业：{ret_keys}）；"
+            f"本次检索域 '{coll_key}' 有 {sub_n} 条查询 → 应能命中；"
+            f"若仍无片段，请查 Streamlit 云端日志『get_rag_hits EMPTY』（路径：{KB_DATA_PATH}）")
+
+def kb_unavailable_message(rag_key=None):
+    """生成『检索不可用』告警文案：准确区分『KB 没加载』与『KB 已加载但检索未命中』。"""
+    if KB is None or not bool(KB):
+        return f"知识库 bundle 未加载（{kb_unload_reason(rag_key)}），已回退至通用分析。"
+    return f"知识库已加载，但本次检索未命中相关片段（{kb_unload_reason(rag_key)}），已回退至通用分析。"
 
 def kb_status_info():
     """知识库加载诊断：返回部署环境的真实状态，供状态面板与告警复用。"""
@@ -811,7 +826,14 @@ def get_rag_hits(industry: str, user_query: str):
                 seen.add(key)
                 pool.append(h)
     pool.sort(key=lambda x: -x["score"])
-    return pool[:4]
+    result = pool[:4]
+    if not result:
+        import sys
+        print(f"[FinSynagent] get_rag_hits EMPTY: coll_key={coll_key!r}, qmap_size={len(qmap)}, "
+              f"KB_top_keys={list(KB.keys())[:10] if isinstance(KB, dict) else 'KB?'}, "
+              f"retrieval_keys={list(KB.get('retrieval', {}).keys()) if isinstance(KB, dict) else 'KB?'}, "
+              f"path={KB_DATA_PATH}", file=sys.stderr)
+    return result
 
 SPARK_MODELS = {
     "Spark4.0 Ultra": {"domain": "4.0Ultra", "desc": "星火最强旗舰模型，分析与推理能力卓越，Fin 1.5 起作为专家模型，内生联网搜索。", "grad": "linear-gradient(135deg,#7A4FD0,#4A2C9B)", "badge": "专家模型 · 本项目采用"},
@@ -1410,7 +1432,7 @@ def _run_workflow_inline(query: str, decomp_level: int, use_real=None):
                     f'<div class="src">📄 <b>{h["source"]}</b> · p{h["page"]} · 相似度 <b>{h["score"]:.3f}</b><br>'
                     f'<span style="color:#4A6A56;">{h["text"]}</span></div>', unsafe_allow_html=True)
         else:
-            st.warning(f"知识库 bundle 未加载（{kb_unload_reason()}），已回退至通用分析。")
+            st.warning(kb_unavailable_message(rag_key))
         s.update(label="📚 **知识库检索（RAG）** · 命中高相关片段，已注入专家提示词", state="complete")
     md.append(f"**📚 知识库检索（RAG）** · 命中高相关片段")
     md.append(f"- 检索域：`{kb_tag}` collection · 流程：语义段落切分 → 中文向量化（bge 512 维）→ Chroma 持久化 → 查询向量化 → 余弦相似度 Top-K → Prompt 拼接")
@@ -1418,7 +1440,7 @@ def _run_workflow_inline(query: str, decomp_level: int, use_real=None):
         for h in rag_hits:
             md.append(f"- 📄 **{h['source']}** · p{h['page']} · 相似度 **{h['score']:.3f}**")
     else:
-        md.append(f"- ⚠️ 知识库 bundle 未加载（{kb_unload_reason()}），已回退至通用分析。")
+        md.append(f"- ⚠️ {kb_unavailable_message(rag_key)}")
     md.append("")
 
     # 3) 专家智能体：基于检索片段生成专业回答（流式打字机）
@@ -1516,7 +1538,7 @@ def _consult_on_step(state, step):
                         f'<div class="src">📄 <b>{h["source"]}</b> · p{h["page"]} · 相似度 <b>{h["score"]:.3f}</b><br>'
                         f'<span style="color:#4A6A56;">{h["text"]}</span></div>', unsafe_allow_html=True)
             else:
-                st.warning(f"知识库 bundle 未加载（{kb_unload_reason()}），已回退至通用分析。")
+                st.warning(kb_unavailable_message(state.get("rag_key")))
         else:
             st.markdown(step["content"])
         s.update(label=step["title"], state="complete")
@@ -1561,7 +1583,7 @@ def _run_consult_graph(query: str, decomp_level: int, use_real=None):
             for h in final.get("rag_hits", []):
                 md.append(f"- 📄 **{h['source']}** · p{h['page']} · 相似度 **{h['score']:.3f}**")
             else:
-                md.append(f"- ⚠️ 知识库 bundle 未加载（{kb_unload_reason()}），已回退至通用分析。")
+                md.append(f"- ⚠️ {kb_unavailable_message(final.get('rag_key'))}")
         else:
             md.append(f"**{step['title']}**")
             md.append(step["content"])
