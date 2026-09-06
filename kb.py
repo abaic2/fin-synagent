@@ -26,8 +26,10 @@ KB_DATA_PATH = os.path.join(os.path.dirname(__file__), "kb_data.json")
 
 # 检索构建指纹：打到告警/状态文案里，便于一眼判断云端跑的是哪版 get_rag_hits
 # （历史：a1924c3 之前的版本用『单最佳查询提前 return』，会在 KB 完好时静默返回空；
-#  97a63c8 改为收集整个行业命中后统一排序取 Top-K。告警文案含本标记即代表新构建已生效。）
-KB_RETRIEVE_BUILD = "20260906-pooled-v3"
+#  97a63c8 改为收集整个行业命中后统一排序取 Top-K；v4 修复 retrieval[行业] 含非字符串
+#  查询 key 时 _overlap 抛 TypeError 被 except 吞掉导致真实查询静默空、空查询探针却正常命中的
+#  问题——对非字符串 key 强转 str 防御。告警文案含本标记即代表新构建已生效。）
+KB_RETRIEVE_BUILD = "20260906-pooled-v4"
 
 # 模块级直接加载一次（Streamlit 每个进程只跑一次模块级代码，无需 cache）
 KB_LOAD_ERROR = None
@@ -84,11 +86,22 @@ def _iter_hits(node):
 
 
 def _overlap(a, b):
-    """字符重叠计数（集合交集大小），用于衡量用户问题与某条已存查询的相关度。"""
-    if not a or not b:
+    """字符重叠计数（集合交集大小），用于衡量用户问题与某条已存查询的相关度。
+
+    防御式：a/b 强制转 str，且整体 try/except。原因——KB 里 retrieval[行业] 的查询 key
+    不一定是字符串（云端曾出现 int / list 等非字符串 key），一旦在真实查询路径里对
+    非字符串 key 做 `ch in q` 比较会抛 TypeError，被 get_rag_hits 的 except 吞掉返回 []
+    （而空查询探针走 overlap=0 分支不触发比较，所以探针能命中、真实查询却空——典型
+    『本地正常云端空』）。强转 str 后任何 key 都安全，彻底消除这类静默空结果。
+    """
+    try:
+        a, b = str(a), str(b)
+        if not a or not b:
+            return 0
+        sa = set(a)
+        return sum(1 for ch in sa if ch in b)
+    except Exception:
         return 0
-    sa = set(a)
-    return sum(1 for ch in sa if ch in b)
 
 
 def _score_hits(node, user_query):
@@ -109,15 +122,23 @@ def _score_hits(node, user_query):
                 items = [hits]  # 单条命中也包成列表统一处理
             for h in items:
                 if isinstance(h, dict):
-                    scored.append((overlap, float(h.get("score", 0) or 0), h))
+                    scored.append((overlap, _safe_score(h.get("score")), h))
                 else:
                     # 极少数非字典条目：包装保留原文，按 0 分参与排序
                     scored.append((overlap, 0.0, {"text": str(h)}))
     else:
         # list / 其他：递归收集，overlap 记 0
         for h in _iter_hits(node):
-            scored.append((0, float(h.get("score", 0) or 0), h))
+            scored.append((0, _safe_score(h.get("score")), h))
     return scored
+
+
+def _safe_score(v):
+    """把任意 score 值安全转成 float，异常/非法一律归 0。"""
+    try:
+        return float(v or 0)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _reread_file_diag():
@@ -156,7 +177,9 @@ def kb_unload_reason(rag_key=None):
         kb_type = type(KB).__name__
         kb_len = len(KB) if hasattr(KB, "__len__") else "n/a"
         return f"KB 是假值（type={kb_type}, len={kb_len}）；{_reread_file_diag()}（路径：{KB_DATA_PATH}）"
-    # KB 健康加载：先捕获『触发本次告警的真实查询』留下的错误，再跑空查询探针（避免探针覆盖）
+    # KB 健康加载：先捕获『触发本次告警的真实查询』留下的错误；
+    # 注意：下面跑探针会调用 get_rag_hits 并把它内部全局变量 KB_RETRIEVE_ERROR 重置，
+    # 所以 real_err 必须在探针之前锁定（已在此处），否则会看不到真实原因。
     real_err = KB_RETRIEVE_ERROR
     retrieval = KB.get("retrieval")
     ret_keys = list(retrieval.keys()) if isinstance(retrieval, dict) else f"非 dict（{type(retrieval).__name__}）"
