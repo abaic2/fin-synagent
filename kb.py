@@ -24,6 +24,11 @@ import json
 
 KB_DATA_PATH = os.path.join(os.path.dirname(__file__), "kb_data.json")
 
+# 检索构建指纹：打到告警/状态文案里，便于一眼判断云端跑的是哪版 get_rag_hits
+# （历史：a1924c3 之前的版本用『单最佳查询提前 return』，会在 KB 完好时静默返回空；
+#  97a63c8 改为收集整个行业命中后统一排序取 Top-K。告警文案含本标记即代表新构建已生效。）
+KB_RETRIEVE_BUILD = "20260906-pooled-v3"
+
 # 模块级直接加载一次（Streamlit 每个进程只跑一次模块级代码，无需 cache）
 KB_LOAD_ERROR = None
 # 最近一次 get_rag_hits 的失败原因（空结果或异常），供告警自诊断内联展示
@@ -167,10 +172,12 @@ def kb_unload_reason(rag_key=None):
 
 
 def kb_unavailable_message(rag_key=None):
-    """生成『检索不可用』告警文案：准确区分『KB 没加载』与『KB 已加载但检索未命中』。"""
+    """生成『检索不可用』告警文案：准确区分『KB 没加载』与『KB 已加载但检索未命中』。
+
+    末尾带 KB_RETRIEVE_BUILD 指纹，便于判断云端实际跑的是哪版 get_rag_hits。"""
     if KB is None or not bool(KB):
-        return f"知识库 bundle 未加载（{kb_unload_reason(rag_key)}），已回退至通用分析。"
-    return f"知识库已加载，但本次检索未命中相关片段（{kb_unload_reason(rag_key)}），已回退至通用分析。"
+        return f"知识库 bundle 未加载（{kb_unload_reason(rag_key)}），已回退至通用分析。 [build:{KB_RETRIEVE_BUILD}]"
+    return f"知识库已加载，但本次检索未命中相关片段（{kb_unload_reason(rag_key)}），已回退至通用分析。 [build:{KB_RETRIEVE_BUILD}]"
 
 
 def kb_status_info():
@@ -184,6 +191,7 @@ def kb_status_info():
         "parse_ok": None,
         "keys": None,
         "reason": kb_unload_reason(),
+        "retrieve_build": KB_RETRIEVE_BUILD,
     }
     if info["exists"]:
         try:
