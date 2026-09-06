@@ -1295,7 +1295,7 @@ def _run_workflow_inline(query: str, decomp_level: int, use_real=None):
                     f'<div class="src">📄 <b>{h["source"]}</b> · p{h["page"]} · 相似度 <b>{h["score"]:.3f}</b><br>'
                     f'<span style="color:#4A6A56;">{h["text"]}</span></div>', unsafe_allow_html=True)
         else:
-            st.warning(kb_unavailable_message(rag_key))
+            st.info(kb_unavailable_message(rag_key))
         s.update(label="📚 **知识库检索（RAG）** · 命中高相关片段，已注入专家提示词", state="complete")
     md.append(f"**📚 知识库检索（RAG）** · 命中高相关片段")
     md.append(f"- 检索域：`{kb_tag}` collection · 流程：语义段落切分 → 中文向量化（bge 512 维）→ Chroma 持久化 → 查询向量化 → 余弦相似度 Top-K → Prompt 拼接")
@@ -1303,7 +1303,7 @@ def _run_workflow_inline(query: str, decomp_level: int, use_real=None):
         for h in rag_hits:
             md.append(f"- 📄 **{h['source']}** · p{h['page']} · 相似度 **{h['score']:.3f}**")
     else:
-        md.append(f"- ⚠️ {kb_unavailable_message(rag_key)}")
+        md.append(f"- {kb_unavailable_message(rag_key)}")
     md.append("")
 
     # 3) 专家智能体：基于检索片段生成专业回答（流式打字机）
@@ -1401,7 +1401,7 @@ def _consult_on_step(state, step):
                         f'<div class="src">📄 <b>{h["source"]}</b> · p{h["page"]} · 相似度 <b>{h["score"]:.3f}</b><br>'
                         f'<span style="color:#4A6A56;">{h["text"]}</span></div>', unsafe_allow_html=True)
             else:
-                st.warning(kb_unavailable_message(state.get("rag_key")))
+                st.info(kb_unavailable_message(state.get("rag_key")))
         else:
             st.markdown(step["content"])
         s.update(label=step["title"], state="complete")
@@ -1446,7 +1446,7 @@ def _run_consult_graph(query: str, decomp_level: int, use_real=None):
             for h in final.get("rag_hits", []):
                 md.append(f"- 📄 **{h['source']}** · p{h['page']} · 相似度 **{h['score']:.3f}**")
             else:
-                md.append(f"- ⚠️ {kb_unavailable_message(final.get('rag_key'))}")
+                md.append(f"- {kb_unavailable_message(final.get('rag_key'))}")
         else:
             md.append(f"**{step['title']}**")
             md.append(step["content"])

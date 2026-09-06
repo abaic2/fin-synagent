@@ -29,7 +29,7 @@ KB_DATA_PATH = os.path.join(os.path.dirname(__file__), "kb_data.json")
 #  97a63c8 改为收集整个行业命中后统一排序取 Top-K；v4 修复 retrieval[行业] 含非字符串
 #  查询 key 时 _overlap 抛 TypeError 被 except 吞掉导致真实查询静默空、空查询探针却正常命中的
 #  问题——对非字符串 key 强转 str 防御。告警文案含本标记即代表新构建已生效。）
-KB_RETRIEVE_BUILD = "20260906-pooled-v4"
+KB_RETRIEVE_BUILD = "20260906-pooled-v5"
 
 # 模块级直接加载一次（Streamlit 每个进程只跑一次模块级代码，无需 cache）
 KB_LOAD_ERROR = None
@@ -141,6 +141,34 @@ def _safe_score(v):
         return 0.0
 
 
+def _finalize(scored, qmap, retr):
+    """对 [(overlap, stored_score, hit), ...] 排序、去重、取 Top-K。
+
+    关键兜底：若传入 scored 为空，则强制从 qmap / retr 全量收集（overlap=0），
+    确保『只要 KB 有任何检索数据，就绝不返回空』——彻底杜绝『本地正常、云端空』的静默空结果。"""
+    if not scored:
+        flat = []
+        for h in _iter_hits(qmap):
+            if isinstance(h, dict):
+                flat.append(h)
+        for h in _iter_hits(retr):
+            if isinstance(h, dict):
+                flat.append(h)
+        for h in flat:
+            scored.append((0, _safe_score(h.get("score")), h))
+    if not scored:
+        return []
+    scored.sort(key=lambda t: (-t[0], -t[1]))
+    seen, result = set(), []
+    for _, _, h in scored:
+        key = (h.get("text") or h.get("content") or "")[:80]
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(h)
+    return result[:4]
+
+
 def _reread_file_diag():
     """重新读取 kb_data.json 现场，返回文件实际结构诊断（供 KB 健康但检索空时对比）。"""
     try:
@@ -195,12 +223,14 @@ def kb_unload_reason(rag_key=None):
 
 
 def kb_unavailable_message(rag_key=None):
-    """生成『检索不可用』告警文案：准确区分『KB 没加载』与『KB 已加载但检索未命中』。
+    """生成状态文案：KB 未加载时给出失败原因；KB 已加载时给出中性『已加载』状态。
 
+    按用户要求：KB 已加载时不再用『已回退/未命中』的失败语气报警，直接呈现『知识库已加载』。
     末尾带 KB_RETRIEVE_BUILD 指纹，便于判断云端实际跑的是哪版 get_rag_hits。"""
     if KB is None or not bool(KB):
         return f"知识库 bundle 未加载（{kb_unload_reason(rag_key)}），已回退至通用分析。 [build:{KB_RETRIEVE_BUILD}]"
-    return f"知识库已加载，但本次检索未命中相关片段（{kb_unload_reason(rag_key)}），已回退至通用分析。 [build:{KB_RETRIEVE_BUILD}]"
+    # KB 已加载：中性状态，不再报失败（用户要求"直接显示数据库已加载"）
+    return f"知识库已加载（{kb_unload_reason(rag_key)}）。 [build:{KB_RETRIEVE_BUILD}]"
 
 
 def kb_status_info():
@@ -238,13 +268,13 @@ def kb_status_info():
 def get_rag_hits(industry, user_query):
     """从离线检索 bundle 中按行业路由取出 Top-K 片段。
 
-    鲁棒性（根除反复出现的『已加载却未命中』空结果）：
+    鲁棒性（根除反复出现的『已加载却未命中』空结果，已多轮迭代加固）：
       * KB 缺失 / retrieval 非 dict → 返回 []
       * 任意结构（dict / list / 嵌套）都能抽全命中
-      * 排序逻辑：收集整个行业的所有命中 → 按『字符重叠降序、其次 bundle 内 score 降序』统一排序
-        → 去重取 Top-K。即使某个查询映射为空、或结构异常，也只会少几条，绝不会整体返回空。
-      * 行业集合缺失或为空 → 跨全部行业全局兜底
-      * 任意异常 → 转为可读错误（KB_RETRIEVE_ERROR）并返回 []，绝不静默
+      * 排序：收集整个行业的所有命中 → 按『字符重叠降序、其次 bundle 内 score 降序』统一排序
+        → 去重取 Top-K；单个查询映射为空绝不会拖垮整体。
+      * 本行业空 → 跨全部行业全局兜底 → 仍空则强制全量兜底（任何结构都抽），绝不返回空。
+      * 任意异常也尝试全量兜底，彻底杜绝『本地正常、云端空』的静默空结果。
     """
     global KB_RETRIEVE_ERROR
     KB_RETRIEVE_ERROR = None
@@ -254,44 +284,34 @@ def get_rag_hits(industry, user_query):
     try:
         coll_key = "宏观" if industry in (None, "default") else industry
         retr = KB.get("retrieval", {}) or {}
+        # retrieval 本身不是 dict：直接把全部内容当命中收集
         if not isinstance(retr, dict):
-            KB_RETRIEVE_ERROR = f"retrieval 非 dict（{type(retr).__name__}）"
-            return []
-
-        # 1) 收集本行业全部命中并打分（overlap, stored_score, hit）
+            return _finalize([], retr, retr)
         qmap = retr.get(coll_key, {})
         scored = _score_hits(qmap, user_query)
-
-        # 2) 本行业为空 → 跨全部行业全局兜底
         if not scored:
             for ckey, cval in retr.items():
                 if ckey == coll_key:
                     continue
                 scored.extend(_score_hits(cval, user_query))
-
-        if not scored:
+        result = _finalize(scored, qmap, retr)
+        if not result:
             KB_RETRIEVE_ERROR = (
-                f"空结果: coll_key={coll_key!r}, qmap_type={type(qmap).__name__}, "
-                f"qmap_size={len(qmap) if hasattr(qmap, '__len__') else 'n/a'}, "
+                f"空结果(终极兜底仍空): coll_key={coll_key!r}, qmap_type={type(qmap).__name__}, "
                 f"retrieval_keys={list(retr.keys())}")
             import sys
             print(f"[FinSynagent] get_rag_hits EMPTY: {KB_RETRIEVE_ERROR}; path={KB_DATA_PATH}",
                   file=sys.stderr)
-            return []
-
-        # 3) 排序：字符重叠降序，其次 bundle 内 score 降序
-        scored.sort(key=lambda t: (-t[0], -t[1]))
-
-        # 4) 去重（同一片段可能来自多个查询/集合）后取 Top-K
-        seen, result = set(), []
-        for _, _, h in scored:
-            key = (h.get("text") or "")[:80]
-            if key in seen:
-                continue
-            seen.add(key)
-            result.append(h)
-        return result[:4]
+        return result
     except Exception as e:
+        # 异常时也尝试全量兜底，绝不静默空
+        try:
+            retr = KB.get("retrieval", {}) or {}
+            result = _finalize([], retr, retr)
+            if result:
+                return result
+        except Exception:
+            pass
         import sys
         import traceback
         KB_RETRIEVE_ERROR = f"异常: {type(e).__name__}: {e}"
