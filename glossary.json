@@ -25,15 +25,7 @@
       "icon": "🕸",
       "terms": [
         {"term": "LangGraph", "def": "LangChain 团队开源的多智能体编排框架，用「图（Graph）」显式描述智能体工作流：节点是计算步骤、边是流转关系，支持分支、循环与持久化状态。本项目 Consult 咨询与 Screen 荐股两条流水线均用 LangGraph 的 StateGraph 编排。", "star": true},
-        {"term": "StateGraph（状态图）", "def": "LangGraph 的核心对象：用一张有向图把多个节点串成工作流。每个节点是一个函数（如检索、分析、批评），节点间用边连接，框架负责按图调度执行并维护共享状态。", "star": true},
-        {"term": "节点（Node）", "def": "StateGraph 中的单个处理单元，接收当前 State 返回部分 State 更新（如 Leader 节点拆任务、Critic 节点打分）。节点函数签名通常为 (state) -> dict。"},
-        {"term": "边（Edge）", "def": "节点间的固定流转关系。普通边表示「A 跑完必去 B」；入口边 set_entry_point 指定从哪个节点开始。"},
-        {"term": "条件边（Conditional Edge）", "def": "add_conditional_edges：根据某节点的返回值（如 verdict=='revise'/'approve'）动态决定下一步走向哪个节点，是实现「批评-修正」回环的关键。注意条件判定使用的是该节点写入后的最新 State。"},
-        {"term": "State（状态）", "def": "贯穿整条流水线的共享数据结构，通常用 TypedDict 定义（如 ConsultState 含 query / rag_hits / analyst_view / trace）。每个节点读写其中的字段，是各 Agent 之间唯一的数据通道。", "star": true},
-        {"term": "Channel / Reducer（通道归约）", "def": "State 字段的更新策略。默认是「覆盖」，标注 Annotated[list, operator.add] 则表示「累加」——多节点向同一字段追加内容而不互相覆盖。本项目用它对 trace 轨迹做累积，供前端逐步渲染推理过程。"},
-        {"term": "循环 / 回环（Cycle / Loop）", "def": "工作流中某段路径能回到之前节点重复执行，如 Critic→Reasoner 的「批评后修订再批评」。LangGraph 天然支持环，逻辑上等价于 while 循环：用一个写在「会被重新执行节点内」的计数器控制最大回环次数，避免死循环。"},
-        {"term": "Checkpointer（检查点）", "def": "LangGraph 的持久化机制，把每步 State 存入后端（内存 / SQLite / 数据库），支持断点续跑、时间旅行回溯与人工介入（Human-in-the-loop）。"},
-        {"term": "依赖注入编排（Dependency Injection）", "def": "把 LLM / 检索 / 特征等可替换能力通过参数注入到图（如 build_initial_state(llm=, rag_fn=)），使编排与具体实现解耦、便于单元测试 mock。注意：不应把 Callable 等非常规类型放进 StateGraph 的 channel 跨节点传播，云端可能丢失——稳妥做法是在独立纯模块内直接 import 调用。"}
+        {"term": "StateGraph（状态图）", "def": "LangGraph 的核心对象：用一张有向图把多个节点串成工作流。每个节点是一个函数（如检索、分析、批评），节点间用边连接，框架负责按图调度执行并维护共享状态。", "star": true}
       ]
     },
     {
