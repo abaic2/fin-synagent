@@ -21,42 +21,46 @@ KB_DATA_PATH = os.path.join(os.path.dirname(__file__), "kb_data.json")
 SCRIPTS_DIR = os.path.join(os.path.dirname(__file__), "scripts")
 # 技能内置的 references 知识文档目录（随 Demo 一同部署，页面可展开渲染并下载）
 REFERENCES_DIR = os.path.join(os.path.dirname(__file__), "references")
-# 记录知识库 bundle 加载失败原因，避免「未加载」成为无法排查的谜团
+# 知识库 bundle 加载失败原因：必须随 KB 一同被 cache，避免 cache 包装导致全局副作用丢失而查不到原因
 KB_LOAD_ERROR = None
 
 def _read_kb_bundle(path):
-    """读取离线知识库 bundle，返回 (data, None) 或 (None, error_msg)。
+    """读取离线知识库 bundle。返回 (data, error)：
+    - 成功：(dict, None)
+    - 失败：(None, 可读原因字符串)
     兼容性：用 utf-8-sig 容忍带 BOM 的文件；缺失/损坏/结构异常均给出可读原因。"""
-    global KB_LOAD_ERROR
     if not os.path.exists(path):
-        KB_LOAD_ERROR = f"文件不存在：{path}"
-        return None
+        return None, f"文件不存在：{path}"
     try:
         with open(path, encoding="utf-8-sig") as f:  # utf-8-sig 兼容带 BOM 的源文件
             data = json.load(f)
     except Exception as e:
-        KB_LOAD_ERROR = f"JSON 解析失败：{type(e).__name__}：{e}"
-        return None
+        return None, f"JSON 解析失败：{type(e).__name__}：{e}"
     if not isinstance(data, dict) or "retrieval" not in data:
-        KB_LOAD_ERROR = "结构异常：缺少 'retrieval' 字段，可能不是有效的知识库 bundle"
-        return None
-    KB_LOAD_ERROR = None
-    return data
+        return None, "结构异常：缺少 'retrieval' 字段，可能不是有效的知识库 bundle"
+    return data, None
 
 @st.cache_data(show_spinner=False)
 def load_kb_data(version="v1"):
-    """加载由 knowledge_base/Chroma 真实检索 + 微调数据集统计生成的离线 bundle。"""
+    """加载由 knowledge_base/Chroma 真实检索 + 微调数据集统计生成的离线 bundle。
+    返回 (data, error) 元组，data 与 error 一并被缓存，杜绝『KB 为 None 却查不到原因』的脱钩。"""
     _ = version  # 数据格式更新时改 version 即可强制刷新 cache（不影响文件读取）
     return _read_kb_bundle(KB_DATA_PATH)
 
-KB = load_kb_data(version="v2")
+# 关键：KB 与 KB_LOAD_ERROR 必须来自同一次 cache 调用，避免 cache 包装使全局副作用丢失
+KB, KB_LOAD_ERROR = load_kb_data(version="v3")  # v3：强制刷新 cache，避免云端命中历史缓存的 None
 if KB is None:
     import sys
     print(f"[FinSynagent] WARNING: kb_data.json 未加载 -> {KB_LOAD_ERROR}", file=sys.stderr)
 
 def kb_unload_reason():
-    """返回知识库未加载的可读原因，供告警文案与日志复用。"""
-    return KB_LOAD_ERROR or "未知原因"
+    """返回知识库未加载的可读原因；若 cache 侧信道仍丢失原因，直接复核文件兜底给出。"""
+    if KB_LOAD_ERROR:
+        return KB_LOAD_ERROR
+    if KB is None:
+        _, err = _read_kb_bundle(KB_DATA_PATH)  # 兜底复核：确保任何情况下都能显示真实原因
+        return err or "未知原因（请查看控制台/云端日志）"
+    return "未知原因"
 
 st.set_page_config(
     page_title="Fin Synagent · 多智能体协同智能投顾",
