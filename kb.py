@@ -7,6 +7,13 @@
     彻底消除依赖注入的脆弱环节；app.py 也直接 import 复用，单一数据源。
 
 本模块只依赖 os / json / sys，不依赖 Streamlit，可被任意模块安全导入。
+
+检索鲁棒性（根除反复出现的『已加载却未命中』空结果）：
+  * KB 缺失 → 返回 []
+  * 行业集合可能是 dict（query→hits）或 list（命中列表 / {query,hits} 对），
+    用通用递归收集器 `_iter_hits` 从任意结构中抽取命中，杜绝结构假设导致空结果。
+  * 跨行业全局兜底：单个检索域为空时，扫描全部 collection 取 Top-4。
+  * 全程 try/except，任何异常都转为可读错误（写入 KB_RETRIEVE_ERROR）并返回 []，绝不静默。
 """
 from __future__ import annotations
 
@@ -17,6 +24,8 @@ KB_DATA_PATH = os.path.join(os.path.dirname(__file__), "kb_data.json")
 
 # 模块级直接加载一次（Streamlit 每个进程只跑一次模块级代码，无需 cache）
 KB_LOAD_ERROR = None
+# 最近一次 get_rag_hits 的失败原因（空结果或异常），供告警自诊断内联展示
+KB_RETRIEVE_ERROR = None
 
 
 def _read_kb_bundle(path):
@@ -50,6 +59,23 @@ if KB is None:
     print(f"[FinSynagent] WARNING: kb_data.json 未加载 -> {KB_LOAD_ERROR}", file=sys.stderr)
 
 
+def _iter_hits(node):
+    """从任意 KB 检索节点（dict / list / 嵌套）中递归抽取所有『命中』片段字典。
+
+    命中字典的判定：包含任一常见字段（text/source/page/title/content/chunk）。
+    这样无论行业集合是 dict(query→hits) 还是 list(hits) 还是 list({query,hits})，
+    都能正确抽全，彻底消除因结构假设导致的空结果。"""
+    if isinstance(node, dict):
+        if any(k in node for k in ("text", "source", "page", "title", "content", "chunk")):
+            yield node
+        else:
+            for v in node.values():
+                yield from _iter_hits(v)
+    elif isinstance(node, list):
+        for v in node:
+            yield from _iter_hits(v)
+
+
 def _reread_file_diag():
     """重新读取 kb_data.json 现场，返回文件实际结构诊断（供 KB 健康但检索空时对比）。"""
     try:
@@ -65,7 +91,10 @@ def _reread_file_diag():
 
 def kb_unload_reason(rag_key=None):
     """返回『为何没有检索片段』的可读诊断。重点：KB 已加载 ≠ 检索必有命中，
-    需进一步看 retrieval 子结构。永远带上路径与真实诊断，杜绝『未知原因』。"""
+    需进一步看 retrieval 子结构；并用空查询探针现场复测，把真实原因内联展示，
+    杜绝『未知原因』，也无需再去翻云端日志。
+
+    永远带上路径与真实诊断。"""
     if KB_LOAD_ERROR:
         return f"KB 加载失败：{KB_LOAD_ERROR}（路径：{KB_DATA_PATH}）"
     if KB is None:
@@ -83,15 +112,18 @@ def kb_unload_reason(rag_key=None):
         kb_type = type(KB).__name__
         kb_len = len(KB) if hasattr(KB, "__len__") else "n/a"
         return f"KB 是假值（type={kb_type}, len={kb_len}）；{_reread_file_diag()}（路径：{KB_DATA_PATH}）"
-    # KB 健康加载：钻取 retrieval 子结构，看本次检索域是否有数据
+    # KB 健康加载：用空查询探针现场复测 retrieval，把真实原因内联
     retrieval = KB.get("retrieval")
     ret_keys = list(retrieval.keys()) if isinstance(retrieval, dict) else f"非 dict（{type(retrieval).__name__}）"
     coll_key = "宏观" if rag_key in (None, "default") else rag_key
-    sub = retrieval.get(coll_key, {}) if isinstance(retrieval, dict) else {}
-    sub_n = len(sub) if isinstance(sub, dict) else "n/a"
-    return (f"KB 已正常加载（顶层 {len(KB)} 键，retrieval 含行业：{ret_keys}）；"
-            f"本次检索域 '{coll_key}' 有 {sub_n} 条查询 → 应能命中；"
-            f"若仍无片段，请查 Streamlit 云端日志『get_rag_hits EMPTY』（路径：{KB_DATA_PATH}）")
+    probe = get_rag_hits(rag_key, "") if callable(get_rag_hits) else []
+    reason = (f"KB 已正常加载（顶层 {len(KB)} 键，retrieval 含行业：{ret_keys}）；"
+              f"本次检索域 '{coll_key}'，空查询探针命中 {len(probe)} 条")
+    if KB_RETRIEVE_ERROR:
+        reason += f"；检索函数返回空原因：{KB_RETRIEVE_ERROR}"
+    elif len(probe) == 0:
+        reason += "；检索函数本应返回命中但未返回，请查云端日志『get_rag_hits』"
+    return reason
 
 
 def kb_unavailable_message(rag_key=None):
@@ -133,50 +165,56 @@ def kb_status_info():
 
 
 def get_rag_hits(industry, user_query):
-    """从真实 Chroma 检索 bundle 中按行业路由取出 Top 片段。
+    """从离线检索 bundle 中按行业路由取出 Top 片段。
 
-    鲁棒性（根除反复出现的『未命中』空结果）：
+    鲁棒性（根除反复出现的『已加载却未命中』空结果）：
       * KB 缺失 → 返回 []
-      * 检索域缺失 / 行业 key 不匹配 → 自动跨全部行业 collection 联合检索
-      * 只要 KB 有任何检索数据，就绝不静默返回空
+      * 任意结构（dict / list / 嵌套）都能抽全命中
+      * 行业集合缺失或为空 → 跨全部行业全局兜底
+      * 任意异常 → 转为可读错误（KB_RETRIEVE_ERROR）并返回 []，绝不静默
     """
+    global KB_RETRIEVE_ERROR
+    KB_RETRIEVE_ERROR = None
     if not KB:
+        KB_RETRIEVE_ERROR = "KB 未加载（模块级加载失败）"
         return []
-    coll_key = "宏观" if industry == "default" else industry
-    retr = KB.get("retrieval", {}) or {}
-    qmap = retr.get(coll_key, {})
-    if not isinstance(qmap, dict) or not qmap:
-        # 兜底：联合全部行业 collection 做一次全局检索，避免 key 不匹配导致空结果
-        merged = {}
-        for cq in retr.values():
-            if isinstance(cq, dict):
-                merged.update(cq)
-        qmap = merged
-    # 选取与用户问题字符重叠最多的代表性查询
-    best, best_score = None, 0
-    if user_query:
-        for q, hits in qmap.items():
-            s = sum(1 for ch in set(user_query) if ch in q)
-            if s > best_score:
-                best_score, best = s, hits
-    if best and best_score > 0:
-        return best
-    # 兜底：聚合该（或全局）全部命中、按相似度去重取 Top-4
-    seen, pool = set(), []
-    for hits in qmap.values():
-        for h in hits:
-            if not isinstance(h, dict):
-                continue
-            key = (h.get("source"), h.get("page"), h.get("title"))
-            if key not in seen:
-                seen.add(key)
-                pool.append(h)
-    pool.sort(key=lambda x: -float(x.get("score", 0) or 0))
-    result = pool[:4]
-    if not result:
+    try:
+        coll_key = "宏观" if industry in (None, "default") else industry
+        retr = KB.get("retrieval", {}) or {}
+        if not isinstance(retr, dict):
+            KB_RETRIEVE_ERROR = f"retrieval 非 dict（{type(retr).__name__}）"
+            return []
+        qmap = retr.get(coll_key, {})
+
+        # 1) 按字符重叠选取最佳匹配查询（仅在 qmap 为 dict 时）
+        best, best_score = None, 0
+        if user_query and isinstance(qmap, dict):
+            for q, hits in qmap.items():
+                s = sum(1 for ch in set(user_query) if ch in q)
+                if s > best_score:
+                    best_score, best = s, hits
+        if best is not None and best_score > 0:
+            return best if isinstance(best, list) else list(_iter_hits(best))
+
+        # 2) 抽取本行业全部命中（list / dict 皆可）；为空则跨行业全局兜底
+        pool = list(_iter_hits(qmap))
+        if not pool:
+            pool = list(_iter_hits(retr))
+        pool.sort(key=lambda x: -float(x.get("score", 0) or 0))
+        result = pool[:4]
+
+        if not result:
+            KB_RETRIEVE_ERROR = (
+                f"空结果: coll_key={coll_key!r}, qmap_type={type(qmap).__name__}, "
+                f"qmap_size={len(qmap) if hasattr(qmap, '__len__') else 'n/a'}, "
+                f"retrieval_keys={list(retr.keys())}")
+            import sys
+            print(f"[FinSynagent] get_rag_hits EMPTY: {KB_RETRIEVE_ERROR}; path={KB_DATA_PATH}",
+                  file=sys.stderr)
+        return result
+    except Exception as e:
         import sys
-        print(f"[FinSynagent] get_rag_hits EMPTY: coll_key={coll_key!r}, qmap_size={len(qmap)}, "
-              f"KB_top_keys={list(KB.keys())[:10] if isinstance(KB, dict) else 'KB?'}, "
-              f"retrieval_keys={list(retr.keys()) if isinstance(retr, dict) else 'KB?'}, "
-              f"path={KB_DATA_PATH}", file=sys.stderr)
-    return result
+        import traceback
+        KB_RETRIEVE_ERROR = f"异常: {type(e).__name__}: {e}"
+        print(f"[FinSynagent] get_rag_hits ERROR: {e!r}\n{traceback.format_exc()}", file=sys.stderr)
+        return []
