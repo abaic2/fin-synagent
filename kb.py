@@ -9,10 +9,12 @@
 本模块只依赖 os / json / sys，不依赖 Streamlit，可被任意模块安全导入。
 
 检索鲁棒性（根除反复出现的『已加载却未命中』空结果）：
-  * KB 缺失 → 返回 []
+  * KB 缺失 / retrieval 非 dict → 返回 []
   * 行业集合可能是 dict（query→hits）或 list（命中列表 / {query,hits} 对），
     用通用递归收集器 `_iter_hits` 从任意结构中抽取命中，杜绝结构假设导致空结果。
-  * 跨行业全局兜底：单个检索域为空时，扫描全部 collection 取 Top-4。
+  * 排序：有查询则按『字符重叠』降序（最相关在前），否则按 bundle 内 score 降序；
+    关键：**收集整个行业的所有命中后统一排序取 Top-K，绝不因单个查询缺失/为空而整体返回空**。
+  * 行业集合缺失或为空 → 跨全部行业全局兜底。
   * 全程 try/except，任何异常都转为可读错误（写入 KB_RETRIEVE_ERROR）并返回 []，绝不静默。
 """
 from __future__ import annotations
@@ -76,6 +78,43 @@ def _iter_hits(node):
             yield from _iter_hits(v)
 
 
+def _overlap(a, b):
+    """字符重叠计数（集合交集大小），用于衡量用户问题与某条已存查询的相关度。"""
+    if not a or not b:
+        return 0
+    sa = set(a)
+    return sum(1 for ch in sa if ch in b)
+
+
+def _score_hits(node, user_query):
+    """从任意结构 node 中抽取命中并打分，返回 [(overlap, stored_score, hit), ...]。
+
+    - node 为 dict 时视为 query→hits 映射：每条命中按『用户问题与 query 的字符重叠』打分，
+      重叠高的查询其命中更相关。
+    - node 为 list / 嵌套时：递归收集，overlap 记为 0（按 bundle 内 score 排序）。
+    - 单个查询 hits 为空（[] 或缺失）只贡献 0 条，绝不会拖垮整体返回，这是根除空结果的关键。
+    """
+    scored = []
+    if isinstance(node, dict):
+        for q, hits in node.items():
+            overlap = _overlap(user_query, q) if user_query else 0
+            if isinstance(hits, list):
+                items = hits
+            else:
+                items = [hits]  # 单条命中也包成列表统一处理
+            for h in items:
+                if isinstance(h, dict):
+                    scored.append((overlap, float(h.get("score", 0) or 0), h))
+                else:
+                    # 极少数非字典条目：包装保留原文，按 0 分参与排序
+                    scored.append((overlap, 0.0, {"text": str(h)}))
+    else:
+        # list / 其他：递归收集，overlap 记 0
+        for h in _iter_hits(node):
+            scored.append((0, float(h.get("score", 0) or 0), h))
+    return scored
+
+
 def _reread_file_diag():
     """重新读取 kb_data.json 现场，返回文件实际结构诊断（供 KB 健康但检索空时对比）。"""
     try:
@@ -112,15 +151,16 @@ def kb_unload_reason(rag_key=None):
         kb_type = type(KB).__name__
         kb_len = len(KB) if hasattr(KB, "__len__") else "n/a"
         return f"KB 是假值（type={kb_type}, len={kb_len}）；{_reread_file_diag()}（路径：{KB_DATA_PATH}）"
-    # KB 健康加载：用空查询探针现场复测 retrieval，把真实原因内联
+    # KB 健康加载：先捕获『触发本次告警的真实查询』留下的错误，再跑空查询探针（避免探针覆盖）
+    real_err = KB_RETRIEVE_ERROR
     retrieval = KB.get("retrieval")
     ret_keys = list(retrieval.keys()) if isinstance(retrieval, dict) else f"非 dict（{type(retrieval).__name__}）"
     coll_key = "宏观" if rag_key in (None, "default") else rag_key
     probe = get_rag_hits(rag_key, "") if callable(get_rag_hits) else []
     reason = (f"KB 已正常加载（顶层 {len(KB)} 键，retrieval 含行业：{ret_keys}）；"
               f"本次检索域 '{coll_key}'，空查询探针命中 {len(probe)} 条")
-    if KB_RETRIEVE_ERROR:
-        reason += f"；检索函数返回空原因：{KB_RETRIEVE_ERROR}"
+    if real_err:
+        reason += f"；真实检索失败原因：{real_err}"
     elif len(probe) == 0:
         reason += "；检索函数本应返回命中但未返回，请查云端日志『get_rag_hits』"
     return reason
@@ -165,11 +205,13 @@ def kb_status_info():
 
 
 def get_rag_hits(industry, user_query):
-    """从离线检索 bundle 中按行业路由取出 Top 片段。
+    """从离线检索 bundle 中按行业路由取出 Top-K 片段。
 
     鲁棒性（根除反复出现的『已加载却未命中』空结果）：
-      * KB 缺失 → 返回 []
+      * KB 缺失 / retrieval 非 dict → 返回 []
       * 任意结构（dict / list / 嵌套）都能抽全命中
+      * 排序逻辑：收集整个行业的所有命中 → 按『字符重叠降序、其次 bundle 内 score 降序』统一排序
+        → 去重取 Top-K。即使某个查询映射为空、或结构异常，也只会少几条，绝不会整体返回空。
       * 行业集合缺失或为空 → 跨全部行业全局兜底
       * 任意异常 → 转为可读错误（KB_RETRIEVE_ERROR）并返回 []，绝不静默
     """
@@ -184,26 +226,19 @@ def get_rag_hits(industry, user_query):
         if not isinstance(retr, dict):
             KB_RETRIEVE_ERROR = f"retrieval 非 dict（{type(retr).__name__}）"
             return []
+
+        # 1) 收集本行业全部命中并打分（overlap, stored_score, hit）
         qmap = retr.get(coll_key, {})
+        scored = _score_hits(qmap, user_query)
 
-        # 1) 按字符重叠选取最佳匹配查询（仅在 qmap 为 dict 时）
-        best, best_score = None, 0
-        if user_query and isinstance(qmap, dict):
-            for q, hits in qmap.items():
-                s = sum(1 for ch in set(user_query) if ch in q)
-                if s > best_score:
-                    best_score, best = s, hits
-        if best is not None and best_score > 0:
-            return best if isinstance(best, list) else list(_iter_hits(best))
+        # 2) 本行业为空 → 跨全部行业全局兜底
+        if not scored:
+            for ckey, cval in retr.items():
+                if ckey == coll_key:
+                    continue
+                scored.extend(_score_hits(cval, user_query))
 
-        # 2) 抽取本行业全部命中（list / dict 皆可）；为空则跨行业全局兜底
-        pool = list(_iter_hits(qmap))
-        if not pool:
-            pool = list(_iter_hits(retr))
-        pool.sort(key=lambda x: -float(x.get("score", 0) or 0))
-        result = pool[:4]
-
-        if not result:
+        if not scored:
             KB_RETRIEVE_ERROR = (
                 f"空结果: coll_key={coll_key!r}, qmap_type={type(qmap).__name__}, "
                 f"qmap_size={len(qmap) if hasattr(qmap, '__len__') else 'n/a'}, "
@@ -211,7 +246,20 @@ def get_rag_hits(industry, user_query):
             import sys
             print(f"[FinSynagent] get_rag_hits EMPTY: {KB_RETRIEVE_ERROR}; path={KB_DATA_PATH}",
                   file=sys.stderr)
-        return result
+            return []
+
+        # 3) 排序：字符重叠降序，其次 bundle 内 score 降序
+        scored.sort(key=lambda t: (-t[0], -t[1]))
+
+        # 4) 去重（同一片段可能来自多个查询/集合）后取 Top-K
+        seen, result = set(), []
+        for _, _, h in scored:
+            key = (h.get("text") or "")[:80]
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append(h)
+        return result[:4]
     except Exception as e:
         import sys
         import traceback
