@@ -29,12 +29,16 @@ import collections
 import statistics
 
 
-def compute_live_rag_metrics(retrieval):
+def compute_live_rag_metrics(retrieval, retrieval_entities=None):
     """从 kb_data.json 中真实召回样本（bge 模型实跑输出）实时统计可直接观测的检索指标。
 
     这些指标完全由本次部署实际携带的检索样本计算得出，因此就是「模型跑了以后」的真实值，
     不依赖任何离线快照。路由质量类指标（Recall@5/MRR/NDCG@5）需要全库 qrels，无法仅凭
     召回样本还原，仍沿用 retrieval_eval 中由 build_retrieval_eval.py 实跑 bge 得到的真值。
+
+    纯度@5 语义与离线快照保持一致：优先用 retrieval_entities[行业][查询] 的「目标实体列表」
+    做精确命中（来源是否包含该目标实体）；宽泛查询（实体为空）回退到行业前缀宽松判定。
+    这样实时统计与 build_retrieval_eval.py 的快照完全同口径。
     """
     IND_PREFIX = {
         "白酒": ["泸州老窖", "五粮液", "贵州茅台"],
@@ -42,6 +46,7 @@ def compute_live_rag_metrics(retrieval):
         "贵金属": ["紫金矿业", "山东黄金", "中金黄金"],
         "宏观": ["货币政策", "问卷调查", "储户"],
     }
+    retrieval_entities = retrieval_entities or {}
     hist_bins = [(0.30, 0.35), (0.35, 0.40), (0.40, 0.45), (0.45, 0.50),
                  (0.50, 0.55), (0.55, 0.60), (0.60, 1.01)]
     hist_counts = collections.Counter()
@@ -50,13 +55,17 @@ def compute_live_rag_metrics(retrieval):
     total_q = 0
     for ind, qmap in retrieval.items():
         prefixes = IND_PREFIX.get(ind, [])
+        ent_map = retrieval_entities.get(ind, {}) or {}
         cov_l, pur_l, sim_l = [], [], []
         for q, hits in qmap.items():
             total_q += 1
             top5 = hits[:5]
             cov_l.append(len({h.get("source", "") for h in top5}))
+            # 精确实体纯度：优先目标实体，宽泛/缺失回退行业前缀（与离线快照同口径）
+            ent = ent_map.get(q) or []
+            targets = ent if ent else prefixes
             pur = sum(1 for h in top5
-                      if any(p in (h.get("source", "") or "") for p in prefixes)) / max(1, len(top5))
+                      if any(t in (h.get("source", "") or "") for t in targets)) / max(1, len(top5))
             pur_l.append(pur)
             for h in top5:
                 s = float(h.get("score", 0) or 0)
@@ -3238,9 +3247,10 @@ def render_kb():
         evaluation = KB.get("retrieval_eval", {})
         eval_overall = evaluation.get("overall", {})
         n_samples = sum(len(h) for qq in retrieval.values() for h in qq.values())
+        _ret_entities = KB.get("retrieval_entities", {})
         # 真实指标 = 对 bge 模型实跑输出的召回样本实时统计（纯度/覆盖/相似度/分布），
         # 路由质量类（Recall/MRR/NDCG）沿用 retrieval_eval 中 build_retrieval_eval.py 的真值。
-        _live, _ = compute_live_rag_metrics(retrieval)
+        _live, _ = compute_live_rag_metrics(retrieval, _ret_entities)
         eval_overall = dict(eval_overall)
         eval_overall["purity@5"] = _live["purity@5"]
         eval_overall["source_coverage_top5"] = _live["source_coverage_top5"]
@@ -3249,15 +3259,15 @@ def render_kb():
             "mean": _live.get("sim_mean_top5", 0), "median": _live.get("sim_median_top5", 0),
             "p10": _live.get("sim_p10_top5", 0), "p90": _live.get("sim_p90_top5", 0)}}
         eval_overall["histogram"] = _live["histogram"]
-        st.markdown('<div class="sec-title" style="margin-top:24px;">RAG 检索评价指标</div><div class="sec-sub">真实可实现的理想指标（基于真实 300 条召回片段统计）</div>', unsafe_allow_html=True)
-        # 真实可实现的理想目标（非 100% 完美，但代表工程上可追求的上限）
-        _ideal_recall, _ideal_mrr, _ideal_ndcg, _ideal_purity = 0.92, 0.85, 0.88, 0.90
-        _ideal_cov, _ideal_sim = 2.80, 0.72
+        st.markdown(f'<div class="sec-title" style="margin-top:24px;">RAG 检索评价指标</div><div class="sec-sub">真实可实现的理想指标（基于真实 {n_samples} 条召回片段统计）</div>', unsafe_allow_html=True)
+        # 真实可实现的理想目标（略高于真实值、且工程上确可追求，避免 100% 完美带来的失真）
+        _ideal_recall, _ideal_mrr, _ideal_ndcg, _ideal_purity = 0.85, 0.82, 0.80, 0.82
+        _ideal_cov, _ideal_sim = 2.80, 0.70
         ideal_row1 = [
-            (f'{_ideal_recall:.1%}', "Recall@5（行业路由）"),
+            (f'{_ideal_recall:.1%}', "实体命中率 Hit@5（实体路由）"),
             (f'{_ideal_mrr:.3f}', "MRR 平均倒数排名"),
             (f'{_ideal_ndcg:.3f}', "NDCG@5"),
-            (f'{_ideal_purity:.1%}', "行业纯度@5"),
+            (f'{_ideal_purity:.1%}', "实体纯度@5"),
         ]
         ideal_row2 = [
             (f'{_ideal_cov:.2f}', "Top-5 来源覆盖数"),
@@ -3272,10 +3282,10 @@ def render_kb():
                 st.markdown(f'<div class="kpi"><div class="v">{v}</div><div class="k">{k}</div></div>', unsafe_allow_html=True)
         st.markdown('<div class="sec-sub" style="margin-top:18px;">真实指标</div>', unsafe_allow_html=True)
         real_row1 = [
-            (f'{eval_overall.get("recall@5", 0):.1%}', "Recall@5（行业路由）"),
+            (f'{eval_overall.get("recall@5", 0):.1%}', "实体命中率 Hit@5（实体路由）"),
             (f'{eval_overall.get("mrr", 0):.3f}', "MRR 平均倒数排名"),
             (f'{eval_overall.get("ndcg@5", 0):.3f}', "NDCG@5"),
-            (f'{eval_overall.get("purity@5", 0):.1%}', "行业纯度@5"),
+            (f'{eval_overall.get("purity@5", 0):.1%}', "实体纯度@5"),
         ]
         real_row2 = [
             (f'{eval_overall.get("source_coverage_top5", 0):.2f}', "Top-5 来源覆盖数"),
@@ -3288,7 +3298,7 @@ def render_kb():
         for col, (v, k) in zip(st.columns(3), real_row2):
             with col:
                 st.markdown(f'<div class="kpi"><div class="v">{v}</div><div class="k">{k}</div></div>', unsafe_allow_html=True)
-        st.caption("理想指标采用工程上真实可实现的数值（Recall@5≥0.92、MRR≥0.85、NDCG@5≥0.88、纯度≥0.90、Top-5 余弦≥0.72、来源覆盖≥2.8），避免 100% 完美指标带来的不可信感；下方「真实指标」= bge 模型对 60 条查询实跑召回后，由应用启动时的真实召回样本（300 条）实时统计得出，路由类指标（Recall/MRR/NDCG）为实跑真值、纯度/覆盖/相似度为实时统计。")
+        st.caption(f"理想指标采用工程上真实可实现的数值（实体命中率 Hit@5≥0.85、MRR≥0.82、NDCG@5≥0.80、实体纯度≥0.82、Top-5 余弦≥0.70、来源覆盖≥2.8），略高于真实值、避免 100% 完美指标带来的失真感；下方「真实指标」= bge 模型对 {eval_overall.get('n_queries',0)} 条查询实跑召回后，由应用启动时的真实召回样本（{n_samples} 条）实时统计得出，路由类指标（Hit@5/MRR/NDCG）为实跑真值、实体纯度/覆盖/相似度为实时统计。")
         return
     # 一、RAG 知识库规模
     st.markdown('<div class="sec-title">RAG 知识库规模</div><div class="sec-sub">PDF → Markdown → 语义切分 → 中文向量化（bge 512 维）→ Chroma 持久化（4 个行业 collection）</div>', unsafe_allow_html=True)
@@ -3320,9 +3330,10 @@ def render_kb():
     retrieval_eval = KB.get("retrieval_eval", {})
     eval_overall = retrieval_eval.get("overall", {})
     n_samples = sum(len(h) for qq in retrieval.values() for h in qq.values())
+    _ret_entities = KB.get("retrieval_entities", {})
     # 真实指标 = 对 bge 模型实跑输出的召回样本实时统计（纯度/覆盖/相似度/分布），
     # 路由质量类（Recall/MRR/NDCG）沿用 retrieval_eval 中 build_retrieval_eval.py 的真值。
-    _live, _ = compute_live_rag_metrics(retrieval)
+    _live, _ = compute_live_rag_metrics(retrieval, _ret_entities)
     eval_overall = dict(eval_overall)
     eval_overall["purity@5"] = _live["purity@5"]
     eval_overall["source_coverage_top5"] = _live["source_coverage_top5"]
@@ -3331,7 +3342,7 @@ def render_kb():
         "mean": _live.get("sim_mean_top5", 0), "median": _live.get("sim_median_top5", 0),
         "p10": _live.get("sim_p10_top5", 0), "p90": _live.get("sim_p90_top5", 0)}}
     eval_overall["histogram"] = _live["histogram"]
-    st.markdown(f'<div class="sec-title">RAG 检索样本浏览器</div><div class="sec-sub">共 {n_samples} 条真实召回片段（4 行业 × 15 个代表性查询 × Top-5），均由 bge 向量 + 余弦相似度从真实建库结果召回，相似度与来源均为真实值，非人工编造</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="sec-title">RAG 检索样本浏览器</div><div class="sec-sub">共 {n_samples} 条真实召回片段（4 行业 × {eval_overall.get("n_queries",0)} 个查询 × Top-5），均由 bge 向量 + 余弦相似度从真实建库结果召回，相似度与来源均为真实值，非人工编造</div>', unsafe_allow_html=True)
     ind_opt = ["白酒", "红利", "贵金属", "宏观"]
     colA, colB = st.columns([1, 3])
     with colA:
@@ -3362,16 +3373,16 @@ def render_kb():
     st.caption("每条命中右侧的「相似度 0.xxx」= query 向量与该片段向量经 bge 编码后的余弦相似度：分数越接近 1，片段与问题语义越贴合（本库 Top-5 多在 0.7+，属高度相关）；「排名 #k」即该片段按相似度从高到低排第几位。「来源 / p页码」用于溯源到原始权威 PDF。")
 
     # 三、RAG 检索评价指标
-    st.markdown('<div class="sec-title">RAG 检索评价指标</div><div class="sec-sub">「真实指标」= 模型实跑后的真实值：路由质量类（Recall@5 / MRR / NDCG@5）来自 build_retrieval_eval.py 用 BAAI/bge-small-zh-v1.5 对 60 条查询实跑召回后的真值（相关性以「命中来源是否属于该查询所属行业集合（即路由是否正确）」为代理判定）；相似度 / 行业纯度 / 来源覆盖 / 分布则由本页应用启动时对 kb_data.json 中真实的 300 条召回样本（bge 模型实跑输出）实时统计得出，随检索样本与知识库规模变化。</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="sec-title">RAG 检索评价指标</div><div class="sec-sub">「真实指标」= 模型实跑后的真实值：路由质量类（实体命中率 Hit@5 / MRR / NDCG@5）来自 build_retrieval_eval.py 用 BAAI/bge-small-zh-v1.5 对 {eval_overall.get("n_queries",0)} 条查询实跑召回后的真值（相关性以「命中来源是否精确匹配查询目标实体（即实体级路由是否正确）」为代理判定）；相似度 / 实体纯度 / 来源覆盖 / 分布则由本页应用启动时对 kb_data.json 中真实的 {n_samples} 条召回样本（bge 模型实跑输出）实时统计得出，随检索样本与知识库规模变化。</div>', unsafe_allow_html=True)
     _sim_mean = float(eval_overall.get("sim_dist", {}).get("top5", {}).get("mean", 0) or 0)
-    # 真实可实现的理想目标：工程上可追求的上限，避免 100% 完美指标带来的不可信感
-    _ideal_recall, _ideal_mrr, _ideal_ndcg, _ideal_purity = 0.92, 0.85, 0.88, 0.90
-    _ideal_cov, _ideal_sim = 2.80, 0.72
+    # 真实可实现的理想目标：略高于真实值且工程上确可追求，避免 100% 完美指标带来的失真
+    _ideal_recall, _ideal_mrr, _ideal_ndcg, _ideal_purity = 0.85, 0.82, 0.80, 0.82
+    _ideal_cov, _ideal_sim = 2.80, 0.70
     ideal_row1 = [
-        (f'{_ideal_recall:.1%}', "Recall@5（行业路由）"),
+        (f'{_ideal_recall:.1%}', "实体命中率 Hit@5（实体路由）"),
         (f'{_ideal_mrr:.3f}', "MRR 平均倒数排名"),
         (f'{_ideal_ndcg:.3f}', "NDCG@5"),
-        (f'{_ideal_purity:.1%}', "行业纯度@5"),
+        (f'{_ideal_purity:.1%}', "实体纯度@5"),
     ]
     ideal_row2 = [
         (f'{_ideal_cov:.2f}', "Top-5 来源覆盖数"),
@@ -3387,10 +3398,10 @@ def render_kb():
             st.markdown(f'<div class="kpi"><div class="v">{v}</div><div class="k">{k}</div></div>', unsafe_allow_html=True)
 
     real_row1 = [
-        (f'{eval_overall.get("recall@5", 0):.1%}', "Recall@5（行业路由）"),
+        (f'{eval_overall.get("recall@5", 0):.1%}', "实体命中率 Hit@5（实体路由）"),
         (f'{eval_overall.get("mrr", 0):.3f}', "MRR 平均倒数排名"),
         (f'{eval_overall.get("ndcg@5", 0):.3f}', "NDCG@5"),
-        (f'{eval_overall.get("purity@5", 0):.1%}', "行业纯度@5"),
+        (f'{eval_overall.get("purity@5", 0):.1%}', "实体纯度@5"),
     ]
     real_row2 = [
         (f'{eval_overall.get("source_coverage_top5", 0):.2f}', "Top-5 来源覆盖数"),
@@ -3413,27 +3424,27 @@ def render_kb():
     _mrr_rank = (1.0 / _mrr) if _mrr > 1e-9 else float("inf")
     _sim_median = float(_sd_top5.get("median", 0) or 0)
     _metric_table_rows = [
-        ("Recall@5（行业路由）", "返回的 Top-5 片段中，命中来源属于「查询所属行业集合」的比例；即多集合 RAG 的路由正确性代理", "0 ~ 1（越高越好）",
-         f'= {eval_overall.get("recall@5",0):.1%}：应召回的相关 chunk 里有 {eval_overall.get("recall@5",0):.0%} 落在 Top-5，越高相关信息越不容易漏在第一屏之外。',
-         "0.92（≥0.90，工程上可追求）"),
-        ("MRR（平均倒数排名）", "每个查询「第一个相关结果排名 r」的倒数 1/r 取平均，衡量最相关的那条排得多靠前", "0 ~ 1（越高越好）",
-         f'= {_mrr:.3f}：当前首个相关结果平均排在第 {_mrr_rank:.1f} 位。',
-         "0.85（首位平均排 1.2 名以内）"),
+        ("实体命中率 Hit@5（实体路由）", "查询级召回率：该查询 Top-5 中是否至少含 1 条「来源精确匹配目标实体」的片段（1/0），全量平均；直接回答多集合检索是否把查询路由并命中到正确实体", "0 ~ 1（越高越好）",
+         f'= {eval_overall.get("recall@5",0):.1%}：约 {eval_overall.get("recall@5",0):.0%} 的查询能在 Top-5 内召回目标实体片段；剩余多为指向 KB 未覆盖实体的查询（真实覆盖缺口）。',
+         "0.85（≥0.82，KB 已覆盖查询可达 ~0.92）"),
+        ("MRR（平均倒数排名）", "每个查询「第一个目标实体相关结果排名 r」的倒数 1/r 取平均，衡量最相关的那条排得多靠前", "0 ~ 1（越高越好）",
+         f'= {_mrr:.3f}：当前首个目标实体片段平均排在第 {_mrr_rank:.1f} 位。',
+         "0.82（首位平均排 1.2 名以内）"),
         ("NDCG@5", "归一化折扣累计增益，越靠前、相关性越高的结果得分越高（惩罚把相关内容排到后面）", "0 ~ 1（越高越好）",
          f'= {eval_overall.get("ndcg@5",0):.3f}：综合了「相关程度」与「排名位置」，越接近 1 高相关内容越集中在最前。',
-         "0.88（高相关片段高度集中）"),
-        ("行业纯度@5（Purity@5）", "Top-5 中属于「正确行业来源」的比例，衡量多集合 RAG 的路由是否串域", "0 ~ 1（越高越好）",
-         f'= {eval_overall.get("purity@5",0):.1%}：{(1-eval_overall.get("purity@5",0)):.0%} 为跨域串扰；越高路由越干净。',
-         "0.90（允许少量跨行业语义漂移）"),
+         "0.80（高相关片段高度集中）"),
+        ("实体纯度@5（Purity@5）", "Top-5 中来源精确匹配「查询目标实体」的比例，衡量单行业集合内公司级检索精确度（是否串到同行业其他公司）", "0 ~ 1（越高越好）",
+         f'= {eval_overall.get("purity@5",0):.1%}：{(1-eval_overall.get("purity@5",0)):.0%} 为同行业跨公司串扰；越高实体命中越干净。',
+         "0.82（允许少量同行业语义漂移）"),
         ("Top-5 来源覆盖数", "单个查询 Top-5 平均覆盖的不同权威来源（PDF）数量，反映证据多样性", "1 ~ 5（一般）",
          f'= {_cov:.2f}：平均每个答案证据来自 {_cov:.1f} 个不同文档，越高越不易受单一来源偏差影响。',
          "2.80（≥2.5，证据充分且多元）"),
         ("检索样本总数", "本次评测覆盖的真实召回片段条数（= 计算上述指标的样本量）", "整数",
-         f'= {_n(n_samples)} 条（4 行业 × 15 查询 × Top-5），是上表所有指标的统计基数。',
+         f'= {_n(n_samples)} 条（4 行业 × {eval_overall.get("n_queries",0)} 查询 × Top-5），是上表所有指标的统计基数。',
          f"{_n(n_samples)} 条（当前实际评测规模）"),
         ("余弦相似度", "query 与该 chunk 经 bge 编码后向量的余弦相似度，样本浏览器中的「相似度」即该值；语义越近分数越高", "约 -1 ~ 1（中文语义向量常见 0.3 ~ 0.9）",
          f'Top-5 均值 {_sim_mean:.3f} / 中位 {_sim_median:.3f}：越接近 1 代表片段与问题语义越贴合。',
-         "0.72（≥0.70，片段与问题语义基本贴合）"),
+         "0.70（≥0.68，片段与问题语义基本贴合）"),
     ]
     _metric_rows_html = "".join(
         f"<tr><td>{m}</td><td>{d}</td><td>{r}</td><td>{c}</td><td style='color:#9A6B00;font-weight:600;'>{g}</td></tr>"
@@ -3454,8 +3465,8 @@ def render_kb():
       <tbody>{_metric_rows_html}</tbody>
     </table>
     """, unsafe_allow_html=True)
-    st.caption("理想目标列同时给出「可达成的基准区间」与「具体达标数值」（非本次评测实测值）。路由类指标不追求绝对 100%（现实中难完全零串扰），设定现实可达目标 Recall@5≥0.95、MRR 0.98、NDCG@5 0.97、纯度 0.98；Top-5 平均余弦相似度目标 0.78（≥0.75 即可），可通过「交叉编码器重排」「更强中文嵌入（如 bge-large / 星火 Embedding）」「更细语义切分」等手段达成；来源覆盖目标 4.0 可显著降低单源偏差。检索样本总数先沿用当前实际评测规模（300 条），后续扩展查询集后再上调。当前 0.632 的均值已属高度相关，叠加上述优化即可逼近理想线。")
-    st.caption("读法示例：Recall@5=100% → Top-5 片段全部命中正确行业集合（路由零串扰）；MRR=1.000 → 每个查询首个命中均排第 1；余弦相似度=0.75 → 该片段与问题语义高度接近、非边缘相关。本评测集所有 300 条命中均来自查询所属行业，故路由类指标为满值，差异主要体现在「相似度分布」与「来源覆盖数」上。分行业表中「查询数」即该行业参与评测的代表性查询条数（各 15），「Top5均相似度」即上表余弦相似度的分行业均值。所有数值由真实召回样本实时统计，随查询集与知识库规模变化，仅作系统能力佐证。")
+    st.caption("理想目标列给出「工程上确可追求」的达标数值（非本次评测实测值，略高于真实值）。路由/实体命中类指标不追求绝对 100%（单行业集合内多公司语义相近、且 KB 对部分实体覆盖有限，天然存在串扰与缺口）：现实可达目标 实体命中率 Hit@5≥0.85、MRR 0.82、NDCG@5 0.80、实体纯度 0.82；可通过「交叉编码器重排」「更强中文嵌入（如 bge-large / 星火 Embedding）」「按公司而非仅按行业分桶」「扩展 KB 覆盖缺失实体」等手段达成；Top-5 平均余弦相似度目标 0.70（≥0.68 即可），来源覆盖目标 2.80 可显著降低单源偏差。当前真实值已反映系统真实水平，叠加上述优化即可逼近理想线。")
+    st.caption(f"读法示例：实体命中率 Hit@5=100% → 每条查询的 Top-5 都至少召回 1 条目标实体片段（实体路由零遗漏）；MRR=1.000 → 每个查询首个目标片段均排第 1；实体纯度=100% → Top-5 全部精确来自目标实体、无同行业跨公司串扰；余弦相似度=0.75 → 该片段与问题语义高度接近、非边缘相关。本评测集由「核心实体 + 宽泛 + 指向 KB 未覆盖实体的稀疏查询」混合构成，故真实值非满分——稀疏查询（如洋河/银泰黄金/财政政策）在对应集合内无目标实体片段，真实拉低了整体均值，这正是对知识库覆盖缺口的诚实暴露。分行业表中「查询数」即该行业参与评测的查询条数，「Top5均相似度」即上表余弦相似度的分行业均值。所有数值由真实召回样本实时统计，随查询集与知识库规模变化，仅作系统能力佐证。")
 
     st.markdown('<div class="sec-title" style="font-size:1.1rem;margin-top:26px;">相似度置信度分布（Top-5 命中相似度）</div><div class="sec-sub">横轴为余弦相似度分箱，纵轴为命中数——分布越靠右、峰值越高，代表检索返回段落与查询语义越贴近</div>', unsafe_allow_html=True)
     hist = eval_overall.get("histogram", [])
@@ -3482,7 +3493,7 @@ def render_kb():
             "Top5均相似度": m.get("sim_mean_top5"),
         })
     st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-    st.caption("方法学：相关性以「命中来源是否属于查询所属行业集合」为代理判定（即路由正确性）；行业纯度以行业已知来源前缀判定；NDCG 采用二值相关性。本评测集 300 条命中全部来自查询所属行业，故路由类指标为满值，真实差异体现在余弦相似度分布与来源覆盖数上。该评测在无人工标注下验证多集合 RAG 的路由正确性与片段相关性，数值由真实召回样本实时统计、随查询集与知识库规模变化，仅作系统能力佐证。")
+    st.caption(f"方法学：相关性以「命中来源是否精确匹配查询目标实体」为代理判定（核心/稀疏查询），宽泛查询回退到「来源属于该行业已知前缀集合」；实体纯度@K 同样以精确实体命中为准。本评测集由 {eval_overall.get('n_queries',0)} 条查询（核心实体 + 宽泛 + 指向 KB 未覆盖实体的稀疏查询）混合构成，故路由/实体命中类指标为真实非满分——稀疏查询在对应集合内无目标实体片段，诚实暴露知识库覆盖缺口。该评测在无人工标注下验证多集合 RAG 的实体级路由正确性与片段相关性，数值由真实召回样本实时统计、随查询集与知识库规模变化，仅作系统能力佐证。")
 
     # 四、RAG 全流程详解（每步含真实示例）
     st.markdown('<div class="sec-title">RAG 全流程详解</div><div class="sec-sub">检索增强生成：离线建库 + 在线查询两端，全部基于本项目真实代码与数据</div>', unsafe_allow_html=True)
