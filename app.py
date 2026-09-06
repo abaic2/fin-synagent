@@ -25,6 +25,70 @@ from kb import (
     get_rag_hits, kb_unload_reason, kb_unavailable_message, kb_status_info,
 )
 
+import collections
+import statistics
+
+
+def compute_live_rag_metrics(retrieval):
+    """从 kb_data.json 中真实召回样本（bge 模型实跑输出）实时统计可直接观测的检索指标。
+
+    这些指标完全由本次部署实际携带的检索样本计算得出，因此就是「模型跑了以后」的真实值，
+    不依赖任何离线快照。路由质量类指标（Recall@5/MRR/NDCG@5）需要全库 qrels，无法仅凭
+    召回样本还原，仍沿用 retrieval_eval 中由 build_retrieval_eval.py 实跑 bge 得到的真值。
+    """
+    IND_PREFIX = {
+        "白酒": ["泸州老窖", "五粮液", "贵州茅台"],
+        "红利": ["工商银行", "中国神华", "长江电力"],
+        "贵金属": ["紫金矿业", "山东黄金", "中金黄金"],
+        "宏观": ["货币政策", "问卷调查", "储户"],
+    }
+    hist_bins = [(0.30, 0.35), (0.35, 0.40), (0.40, 0.45), (0.45, 0.50),
+                 (0.50, 0.55), (0.55, 0.60), (0.60, 1.01)]
+    hist_counts = collections.Counter()
+    all_cov, all_pur, all_sim = [], [], []
+    by_ind = {}
+    total_q = 0
+    for ind, qmap in retrieval.items():
+        prefixes = IND_PREFIX.get(ind, [])
+        cov_l, pur_l, sim_l = [], [], []
+        for q, hits in qmap.items():
+            total_q += 1
+            top5 = hits[:5]
+            cov_l.append(len({h.get("source", "") for h in top5}))
+            pur = sum(1 for h in top5
+                      if any(p in (h.get("source", "") or "") for p in prefixes)) / max(1, len(top5))
+            pur_l.append(pur)
+            for h in top5:
+                s = float(h.get("score", 0) or 0)
+                sim_l.append(s)
+                for b0, b1 in hist_bins:
+                    if b0 <= s < b1:
+                        hist_counts[(b0, b1)] += 1
+        by_ind[ind] = {
+            "purity@5": round(statistics.mean(pur_l), 4) if pur_l else 0.0,
+            "source_coverage_top5": round(statistics.mean(cov_l), 3) if cov_l else 0.0,
+            "sim_mean_top5": round(statistics.mean(sim_l), 4) if sim_l else 0.0,
+        }
+        all_cov.extend(cov_l)
+        all_pur.extend(pur_l)
+        all_sim.extend(sim_l)
+    live = {
+        "purity@5": round(statistics.mean(all_pur), 4) if all_pur else 0.0,
+        "source_coverage_top5": round(statistics.mean(all_cov), 3) if all_cov else 0.0,
+        "sim_mean_top5": round(statistics.mean(all_sim), 4) if all_sim else 0.0,
+        "histogram": [[f"{b0:.2f}-{b1:.2f}" if b1 <= 1.0 else f"{b0:.2f}+", hist_counts[(b0, b1)]]
+                      for b0, b1 in hist_bins],
+        "n_queries": total_q,
+    }
+    if all_sim:
+        ss = sorted(all_sim)
+        n = len(ss)
+        live["sim_median_top5"] = round(statistics.median(ss), 4)
+        live["sim_p10_top5"] = round(ss[max(0, n // 10 - 1)], 4)
+        live["sim_p90_top5"] = round(ss[min(n - 1, n * 9 // 10)], 4)
+    return live, by_ind
+
+
 st.set_page_config(
     page_title="Fin Synagent · 多智能体协同智能投顾",
     page_icon="🚩",
@@ -3174,6 +3238,17 @@ def render_kb():
         evaluation = KB.get("retrieval_eval", {})
         eval_overall = evaluation.get("overall", {})
         n_samples = sum(len(h) for qq in retrieval.values() for h in qq.values())
+        # 真实指标 = 对 bge 模型实跑输出的召回样本实时统计（纯度/覆盖/相似度/分布），
+        # 路由质量类（Recall/MRR/NDCG）沿用 retrieval_eval 中 build_retrieval_eval.py 的真值。
+        _live, _ = compute_live_rag_metrics(retrieval)
+        eval_overall = dict(eval_overall)
+        eval_overall["purity@5"] = _live["purity@5"]
+        eval_overall["source_coverage_top5"] = _live["source_coverage_top5"]
+        eval_overall["sim_mean_top5"] = _live["sim_mean_top5"]
+        eval_overall["sim_dist"] = {"top5": {
+            "mean": _live.get("sim_mean_top5", 0), "median": _live.get("sim_median_top5", 0),
+            "p10": _live.get("sim_p10_top5", 0), "p90": _live.get("sim_p90_top5", 0)}}
+        eval_overall["histogram"] = _live["histogram"]
         st.markdown('<div class="sec-title" style="margin-top:24px;">RAG 检索评价指标</div><div class="sec-sub">真实可实现的理想指标（基于真实 300 条召回片段统计）</div>', unsafe_allow_html=True)
         # 真实可实现的理想目标（非 100% 完美，但代表工程上可追求的上限）
         _ideal_recall, _ideal_mrr, _ideal_ndcg, _ideal_purity = 0.92, 0.85, 0.88, 0.90
@@ -3213,7 +3288,7 @@ def render_kb():
         for col, (v, k) in zip(st.columns(3), real_row2):
             with col:
                 st.markdown(f'<div class="kpi"><div class="v">{v}</div><div class="k">{k}</div></div>', unsafe_allow_html=True)
-        st.caption("理想指标采用工程上真实可实现的数值（Recall@5≥0.92、MRR≥0.85、NDCG@5≥0.88、纯度≥0.90、Top-5 余弦≥0.72、来源覆盖≥2.8），避免 100% 完美指标带来的不可信感；下方为本次评测真实值。")
+        st.caption("理想指标采用工程上真实可实现的数值（Recall@5≥0.92、MRR≥0.85、NDCG@5≥0.88、纯度≥0.90、Top-5 余弦≥0.72、来源覆盖≥2.8），避免 100% 完美指标带来的不可信感；下方「真实指标」= bge 模型对 60 条查询实跑召回后，由应用启动时的真实召回样本（300 条）实时统计得出，路由类指标（Recall/MRR/NDCG）为实跑真值、纯度/覆盖/相似度为实时统计。")
         return
     # 一、RAG 知识库规模
     st.markdown('<div class="sec-title">RAG 知识库规模</div><div class="sec-sub">PDF → Markdown → 语义切分 → 中文向量化（bge 512 维）→ Chroma 持久化（4 个行业 collection）</div>', unsafe_allow_html=True)
@@ -3245,6 +3320,17 @@ def render_kb():
     retrieval_eval = KB.get("retrieval_eval", {})
     eval_overall = retrieval_eval.get("overall", {})
     n_samples = sum(len(h) for qq in retrieval.values() for h in qq.values())
+    # 真实指标 = 对 bge 模型实跑输出的召回样本实时统计（纯度/覆盖/相似度/分布），
+    # 路由质量类（Recall/MRR/NDCG）沿用 retrieval_eval 中 build_retrieval_eval.py 的真值。
+    _live, _ = compute_live_rag_metrics(retrieval)
+    eval_overall = dict(eval_overall)
+    eval_overall["purity@5"] = _live["purity@5"]
+    eval_overall["source_coverage_top5"] = _live["source_coverage_top5"]
+    eval_overall["sim_mean_top5"] = _live["sim_mean_top5"]
+    eval_overall["sim_dist"] = {"top5": {
+        "mean": _live.get("sim_mean_top5", 0), "median": _live.get("sim_median_top5", 0),
+        "p10": _live.get("sim_p10_top5", 0), "p90": _live.get("sim_p90_top5", 0)}}
+    eval_overall["histogram"] = _live["histogram"]
     st.markdown(f'<div class="sec-title">RAG 检索样本浏览器</div><div class="sec-sub">共 {n_samples} 条真实召回片段（4 行业 × 15 个代表性查询 × Top-5），均由 bge 向量 + 余弦相似度从真实建库结果召回，相似度与来源均为真实值，非人工编造</div>', unsafe_allow_html=True)
     ind_opt = ["白酒", "红利", "贵金属", "宏观"]
     colA, colB = st.columns([1, 3])
@@ -3276,7 +3362,7 @@ def render_kb():
     st.caption("每条命中右侧的「相似度 0.xxx」= query 向量与该片段向量经 bge 编码后的余弦相似度：分数越接近 1，片段与问题语义越贴合（本库 Top-5 多在 0.7+，属高度相关）；「排名 #k」即该片段按相似度从高到低排第几位。「来源 / p页码」用于溯源到原始权威 PDF。")
 
     # 三、RAG 检索评价指标
-    st.markdown('<div class="sec-title">RAG 检索评价指标</div><div class="sec-sub">全部指标由 kb_data.json 中真实的 300 条召回片段（60 查询 × Top-5）实时统计得出：余弦相似度来自真实 bge 编码，相关性以「命中来源是否属于该查询所属行业集合（即路由是否正确）」为代理判定，据此验证多集合 RAG 的路由正确性与片段相关性</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec-title">RAG 检索评价指标</div><div class="sec-sub">「真实指标」= 模型实跑后的真实值：路由质量类（Recall@5 / MRR / NDCG@5）来自 build_retrieval_eval.py 用 BAAI/bge-small-zh-v1.5 对 60 条查询实跑召回后的真值（相关性以「命中来源是否属于该查询所属行业集合（即路由是否正确）」为代理判定）；相似度 / 行业纯度 / 来源覆盖 / 分布则由本页应用启动时对 kb_data.json 中真实的 300 条召回样本（bge 模型实跑输出）实时统计得出，随检索样本与知识库规模变化。</div>', unsafe_allow_html=True)
     _sim_mean = float(eval_overall.get("sim_dist", {}).get("top5", {}).get("mean", 0) or 0)
     # 真实可实现的理想目标：工程上可追求的上限，避免 100% 完美指标带来的不可信感
     _ideal_recall, _ideal_mrr, _ideal_ndcg, _ideal_purity = 0.92, 0.85, 0.88, 0.90
