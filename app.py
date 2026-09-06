@@ -3046,6 +3046,18 @@ INTERVIEW_TECH_GEN = [
      "Transformer 是现代大模型基础架构，核心是**自注意力（Self-Attention）**：让序列中任意两个词直接建立关联，不受距离限制。\n\n**适配金融文本**：研报/财报中关键实体（公司、指标、政策）常分散在长文各处，注意力能跨段落捕捉「茅台 → 营收 → 消费税」这类远距离依赖；且可并行训练、易于扩展。本项目的 BGE 嵌入与星火底座均基于 Transformer。", True),
 ]
 
+INTERVIEW_TECH_LG = [
+    ("什么是 LangGraph？它和普通 LLM 串联（Chain / 线性工作流）有什么区别？",
+     "LangGraph 是 LangChain 团队开源的**多智能体编排框架**，用「有向图（StateGraph）」显式描述工作流：节点是计算步骤（检索 / 分析 / 批评），边是流转关系。\n\n**与普通 Chain 的区别**：① Chain 是单向线性、跑完即止，难表达分支与回环；LangGraph 原生支持**条件分支、循环回环、持久化状态**；② 普通流程状态靠变量传递、易乱，LangGraph 用统一 **State（TypedDict）** 作为唯一数据通道，每个节点读写其中字段；③ 支持 Checkpointer 断点续跑与人工介入。\n\n**本项目用法**：Consult 咨询（Leader→RAG→专家→批评→校验→总结）与 Screen 荐股（12 节点筛选树 + 批评-修正回环）两条流水线均为 StateGraph 编排。", True),
+    ("LangGraph 里 StateGraph / Node / Edge / Conditional Edge 分别是什么？",
+     "**StateGraph**：承载整条工作流的有向图对象，用 set_entry_point 指定起点、add_node 注册节点、add_edge / add_conditional_edges 连边。\n\n**Node（节点）**：一个接收 State、返回部分 State 更新的函数，如 retrieve_node 从知识库取片段写回 state['rag_hits']。\n\n**Edge（边）**：固定流转，A 跑完必去 B。\n\n**Conditional Edge（条件边）**：add_conditional_edges(尾节点, 路由函数, {分支:节点})，根据尾节点返回值动态决定下一步——本项目用它实现 Critic 的 verdict=='revise'→回 Reasoner、=='approve'→END。注意条件判定使用的是尾节点**写入后的最新 State**。", True),
+    ("如何用 LangGraph 实现『批评-修正』循环（Critic → Reasoner 回环）？循环计数应该放在哪？",
+     "核心是用条件边让 Critic 节点能回到 Reasoner 节点形成环：**while 未通过且未超限 → Reasoner 重答 → Critic 再评**。\n\n**关键坑（本项目实踩）**：循环计数器**必须放在会被重新执行的节点（Reasoner）里、且只在 verdict=='revise' 时 +1**，绝不能放在条件边的起点节点（Critic）。原因是 LangGraph 在求条件边分支时已用 Critic 写入后的 State 求值——若计数器写在 Critic 里，刚 +1 的值会立刻被条件判定消费掉，导致回环只跑一次就退出。初评时计数器保持 0 即可。", True),
+    ("LangGraph 的 State 怎么定义？Channel / Reducer（如 operator.add）有什么用？",
+     "State 用 TypedDict 声明所有跨节点共享字段（如 ConsultState 含 query / rag_hits / analyst_view / trace）。字段更新策略分两种：**覆盖式**（默认，后写覆盖先写）与 **累加式**（标注 Annotated[list, operator.add]，多个节点向同一字段追加而不互相覆盖）。\n\n**本项目用法**：trace 轨迹字段用 Annotated[list, operator.add] 累积每一步的中间结果（任务拆解、检索命中、专家意见、批评记录），前端再逐步渲染这条可追溯的推理链。", True),
+    ("你们的 Consult / Screen 流水线如何用 LangGraph 编排？没有 LangGraph 时怎么降级？",
+     "**Consult**：set_entry_point(leader) → 链式 add_edge 串起 rag 检索 → 专家分析 → critic 批评 → fact_check 校验 → summary 总结，critic 用条件边形成「revise 回环」。\n\n**Screen**：12 节点的四维筛选树，含 reasoner→critic 回环，最终输出带评分的荐股清单。两图都用 build_initial_state(llm=, rag_fn=, 特征函数=) **依赖注入**编排与实现解耦，便于单测 mock。\n\n**降级**：检测到 langgraph 未安装时，run_* 函数退化为手动 while 循环调用同样节点函数，保证无该依赖也能跑通逻辑。\n\n**一个实战教训**：不要经 StateGraph 的 channel 跨节点传 Callable（如把 rag_fn 塞进 State）——云端某些 langgraph 版本不保证传播，会变成 None 导致静默失效；稳妥做法是在独立纯模块里直接 import 调用，注入仅作可测试入口。"),
+]
 
 RESUME_NONTECH = (
     "Fin Synagent 是一套面向个人投资者的 <b>AI 智能投顾系统</b>。它能像专业投资顾问一样，用自然语言回答投资咨询、推荐股票、解读研报，"
@@ -3053,6 +3065,7 @@ RESUME_NONTECH = (
 )
 RESUME_TECH = (
     "Fin Synagent：基于 <b>多智能体（Multi-Agent）</b> 协同的金融投顾系统。采用 System-2 深思熟虑推理，由 Leader 拆解任务；"
+    "用 <b>LangGraph（StateGraph）</b> 编排 Consult 咨询链与 Screen 四维筛选树（含批评-修正回环），State 统一调度、trace 可追溯；"
     "经 <b>RAG</b>（Chroma 向量库 + BGE 中文嵌入 + 余弦相似度 Top-K 检索）注入白酒 / 红利 / 贵金属 / 宏观四大行业知识；"
     "结合讯飞 <b>星火大模型 SFT 微调（LoRA）</b> 强化金融专业能力；按基本面 / 技术面 / 情绪面 / 行业面 <b>四维筛选树荐股</b>；"
     "以 <b>AI as Judge + AI as Customers + 人工交叉</b> 三层评测验证（p=0.017 显著优于 SOTA），并通过 Streamlit 部署上线。"
@@ -3091,12 +3104,13 @@ def page_interview():
                 <div class="step" style="border-left-color:#1E9E6A;"><b>R · 结果</b><br><span style="color:#55607a;font-size:.9rem;">{r}</span></div>
                 """, unsafe_allow_html=True)
 
-    # 第二部分 · 技术高频问答（按 RAG / 微调 / 通用归类，扁平展示）
-    with st.expander("第二部分 · 技术高频问答（RAG / 微调 / 通用 · 点击展开/收起）", expanded=(not is_lite)):
+    # 第二部分 · 技术高频问答（按 RAG / 微调 / 通用 / LangGraph 归类，扁平展示）
+    with st.expander("第二部分 · 技术高频问答（RAG / 微调 / 通用 / LangGraph · 点击展开/收起）", expanded=(not is_lite)):
         tech_groups = [
             ("📚 RAG 与知识库", INTERVIEW_TECH_RAG),
             ("🔧 微调与训练", INTERVIEW_TECH_FT),
             ("🤖 通用大模型与工程", INTERVIEW_TECH_GEN),
+            ("🕸 LangGraph 多智能体编排", INTERVIEW_TECH_LG),
         ]
         for g_title, g_items in tech_groups:
             _shown = [it for it in g_items if (not is_lite or (bool(it[2]) if len(it) > 2 else False))]
@@ -3110,7 +3124,8 @@ def page_interview():
                 with st.expander(f"**{'⭐ ' if star else ''}{q}**"):
                     st.markdown(a)
     if is_lite:
-        st.caption("简略版仅展示标星（⭐）高频技术题；完整 22 题技术问答请切换到「标准版」。")
+        _total = sum(len(g[1]) for g in tech_groups)
+        st.caption(f"简略版仅展示标星（⭐）高频技术题；完整 {_total} 题技术问答请切换到「标准版」。")
 
 # ============================================================== 页面：RAG 知识库
 def _n(x):
