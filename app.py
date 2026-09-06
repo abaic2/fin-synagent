@@ -840,7 +840,7 @@ def mock_spark_response(model: str, prompt: str, answer: str, temperature: float
 # 通过 OpenAI 兼容协议调用 DeepSeek：https://api.deepseek.com ，默认模型 deepseek-chat (V3)
 DS_BASE_URL = "https://api.deepseek.com"
 DS_MODEL = "deepseek-chat"
-DS_FALLBACK_KEY = "sk-6660156768e541d895455ca4088471e3"  # 硬编码兜底：仅用于页面展示与免粘贴调用；已告知用户，建议用后于 platform.deepseek.com 轮换
+DS_FALLBACK_KEY = ""  # 不再硬编码真实 Key（公开仓库会泄露）。真实模式仅凭 st.secrets['DEEPSEEK_API_KEY'] 或界面粘贴的 ds_api_key 启用。
 
 
 def _ds_client():
@@ -1585,8 +1585,11 @@ def page_consult():
             elif "ds_api_key" in st.session_state:
                 del st.session_state["ds_api_key"]
 
-            # 显示 / 复制 辅助：直接在页面展示真实 Key，便于复制
-            st.code(DS_FALLBACK_KEY, language="text")
+            # 出于安全不展示明文 Key；已配置则提示就绪，否则引导到 secrets / 粘贴
+            if (st.secrets.get("DEEPSEEK_API_KEY", "") or "").strip() or (st.session_state.get("ds_api_key", "") or "").strip():
+                st.caption("🔒 Key 已配置（secrets 或本次会话），真实模式可用。出于安全不在此展示明文。")
+            else:
+                st.caption("🔒 真实模式可用：在上方粘贴你的 Key，或在 Streamlit Cloud 后台 Secrets 配置 DEEPSEEK_API_KEY。出于安全不在此展示明文。")
 
         # 运行模式切换：真实模式（DeepSeek 实时推理）/ 演示模式（内置示例），可在界面手动切换
         _ds_cfg = bool((st.session_state.get("ds_api_key", "") or "").strip() or (st.secrets.get("DEEPSEEK_API_KEY", "") or "").strip() or DS_FALLBACK_KEY)
@@ -2373,8 +2376,11 @@ def page_screen():
             elif "ds_api_key" in st.session_state:
                 del st.session_state["ds_api_key"]
 
-            # 直接在页面展示真实 Key，便于复制
-            st.code(DS_FALLBACK_KEY, language="text")
+            # 出于安全不展示明文 Key；已配置则提示就绪，否则引导到 secrets / 粘贴
+            if (st.secrets.get("DEEPSEEK_API_KEY", "") or "").strip() or (st.session_state.get("ds_api_key", "") or "").strip():
+                st.caption("🔒 Key 已配置（secrets 或本次会话），真实模式可用。出于安全不在此展示明文。")
+            else:
+                st.caption("🔒 真实模式可用：在上方粘贴你的 Key，或在 Streamlit Cloud 后台 Secrets 配置 DEEPSEEK_API_KEY。出于安全不在此展示明文。")
 
         # 运行模式切换：真实模式（DeepSeek 实时推理 + 东方财富实时行情）/ 演示模式（内置示例），可手动切换
         _ds_cfg = bool((st.session_state.get("ds_api_key", "") or "").strip() or (st.secrets.get("DEEPSEEK_API_KEY", "") or "").strip() or DS_FALLBACK_KEY)
