@@ -21,7 +21,7 @@ KB_DATA_PATH = os.path.join(os.path.dirname(__file__), "kb_data.json")
 SCRIPTS_DIR = os.path.join(os.path.dirname(__file__), "scripts")
 # 技能内置的 references 知识文档目录（随 Demo 一同部署，页面可展开渲染并下载）
 REFERENCES_DIR = os.path.join(os.path.dirname(__file__), "references")
-# 知识库 bundle 加载失败原因：必须随 KB 一同被 cache，避免 cache 包装导致全局副作用丢失而查不到原因
+# 知识库 bundle 加载失败原因（与 KB 一同在模块导入时一次性赋值，不再依赖 cache 副作用）
 KB_LOAD_ERROR = None
 
 def _read_kb_bundle(path):
@@ -40,21 +40,21 @@ def _read_kb_bundle(path):
         return None, "结构异常：缺少 'retrieval' 字段，可能不是有效的知识库 bundle"
     return data, None
 
-@st.cache_data(show_spinner=False)
-def load_kb_data(version="v1"):
-    """加载由 knowledge_base/Chroma 真实检索 + 微调数据集统计生成的离线 bundle。
-    返回 (data, error) 元组，data 与 error 一并被缓存，杜绝『KB 为 None 却查不到原因』的脱钩。"""
-    _ = version  # 数据格式更新时改 version 即可强制刷新 cache（不影响文件读取）
+def load_kb_data():
+    """一次性加载离线知识库 bundle（模块导入时调用，不缓存）。
+    直接返回 (data, error) 元组；KB 与原因来自同一次调用，物理上不可能脱钩。
+    注：曾用 @st.cache_data 包裹，但 Streamlit 缓存对大对象/返回元组的序列化会返回
+    损坏的假值（空 dict 等），导致『KB 非 None 却为假值』的疑难降级，故改为直接加载。"""
     return _read_kb_bundle(KB_DATA_PATH)
 
-# 关键：KB 与 KB_LOAD_ERROR 必须来自同一次 cache 调用，避免 cache 包装使全局副作用丢失
-KB, KB_LOAD_ERROR = load_kb_data(version="v4")  # v4：强制刷新 cache，避免云端命中历史缓存的 None
+# 模块级直接加载一次（Streamlit 每个进程只跑一次模块级代码，无需 cache）
+KB, KB_LOAD_ERROR = load_kb_data()
 if KB is None:
     import sys
     print(f"[FinSynagent] WARNING: kb_data.json 未加载 -> {KB_LOAD_ERROR}", file=sys.stderr)
 
 def kb_unload_reason():
-    """返回知识库未加载的可读原因，永远带上解析路径，避免「未知原因」无头排查。"""
+    """返回知识库未加载的可读原因，永远带上解析路径与真实诊断，避免「未知原因」无头排查。"""
     if KB_LOAD_ERROR:
         return f"{KB_LOAD_ERROR}（路径：{KB_DATA_PATH}）"
     if KB is None:
@@ -68,12 +68,29 @@ def kb_unload_reason():
         if not isinstance(d, dict) or "retrieval" not in d:
             return f"文件可读取但结构异常：缺少 'retrieval' 字段（路径：{KB_DATA_PATH}）"
         return f"文件已读取但 KB 仍为 None（路径：{KB_DATA_PATH}）"
-    return f"未知原因（KB 非 None，路径：{KB_DATA_PATH}）"
+    # KB 非 None 但仍被判定为「未加载」-> 说明 KB 是假值（空 dict/空 list 等异常值）
+    # 直接打印 KB 的真实类型/内容，不再返回无意义的『未知原因』
+    kb_type = type(KB).__name__
+    kb_len = len(KB) if hasattr(KB, "__len__") else "n/a"
+    kb_repr = repr(KB)[:200]
+    try:
+        with open(KB_DATA_PATH, encoding="utf-8-sig") as f:
+            raw = f.read()
+        real_size = len(raw)
+        real = json.loads(raw)
+        real_type = type(real).__name__
+        real_keys = list(real.keys())[:10] if isinstance(real, dict) else "n/a"
+        file_diag = f"文件实际：type={real_type}, len={len(real) if hasattr(real,'__len__') else 'n/a'}, top_keys={real_keys}, 大小={real_size}B"
+    except Exception as e:
+        file_diag = f"复核读取失败：{type(e).__name__}：{e}"
+    return (f"KB 已读取但为假值（type={kb_type}, len={kb_len}, 内容={kb_repr}）；"
+            f"{file_diag}（路径：{KB_DATA_PATH}）")
 
 def kb_status_info():
     """知识库加载诊断：返回部署环境的真实状态，供状态面板与告警复用。"""
     info = {
-        "loaded": KB is not None,
+        "loaded": bool(KB),  # 用 bool 而非 is not None：空 dict/list 等假值也判为未加载
+        "actual_type": type(KB).__name__,
         "path": KB_DATA_PATH,
         "exists": os.path.exists(KB_DATA_PATH),
         "size": None,
