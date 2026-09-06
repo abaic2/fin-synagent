@@ -2905,7 +2905,7 @@ def render_tech():
     _sg_svg = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "screen_graph.svg")
     if os.path.exists(_sg_svg):
         st.markdown('<div class="sec-sub" style="margin-top:18px">LangGraph 状态图 · 多智能体流水线（12 节点 + Critic→Reasoner 反思回环）</div>', unsafe_allow_html=True)
-        st.image(_sg_svg, use_column_width=True)
+        st.image(_sg_svg, use_container_width=True)
         with st.expander("查看 Mermaid 源码", expanded=False):
             st.code(
                 'flowchart TD\n'
