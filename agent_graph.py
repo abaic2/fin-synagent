@@ -92,8 +92,25 @@ def leader_node(state: ConsultState) -> dict:
 
 
 def retrieve_node(state: ConsultState) -> dict:
+    # 直接 import 检索函数，避免依赖注入在云端（langgraph 版本差异）失效导致静默空结果；
+    # 同时保留 rag_fn 注入作为可测试入口，若注入可用则优先使用。
+    rag_key = state.get("rag_key", "default")
+    query = state.get("query", "")
+    hits = []
     rag_fn = state.get("rag_fn")
-    hits = rag_fn(state["rag_key"], state["query"]) if callable(rag_fn) else []
+    try:
+        if callable(rag_fn):
+            hits = rag_fn(rag_key, query) or []
+    except Exception as e:
+        import sys
+        print(f"[agent_graph] retrieve_node injected rag_fn failed: {e!r}", file=sys.stderr)
+    if not hits:
+        try:
+            from kb import get_rag_hits as _g
+            hits = _g(rag_key, query) or []
+        except Exception as e:
+            import sys
+            print(f"[agent_graph] retrieve_node fallback import failed: {e!r}", file=sys.stderr)
     rag_ctx = ("\n".join(f"【{h['source']} · p{h['page']}】{h['text']}" for h in hits)
                if hits else "（知识库未加载，以下为通用分析）")
     return {"rag_hits": hits, "rag_ctx": rag_ctx,
