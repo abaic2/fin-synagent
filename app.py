@@ -48,19 +48,55 @@ def load_kb_data(version="v1"):
     return _read_kb_bundle(KB_DATA_PATH)
 
 # 关键：KB 与 KB_LOAD_ERROR 必须来自同一次 cache 调用，避免 cache 包装使全局副作用丢失
-KB, KB_LOAD_ERROR = load_kb_data(version="v3")  # v3：强制刷新 cache，避免云端命中历史缓存的 None
+KB, KB_LOAD_ERROR = load_kb_data(version="v4")  # v4：强制刷新 cache，避免云端命中历史缓存的 None
 if KB is None:
     import sys
     print(f"[FinSynagent] WARNING: kb_data.json 未加载 -> {KB_LOAD_ERROR}", file=sys.stderr)
 
 def kb_unload_reason():
-    """返回知识库未加载的可读原因；若 cache 侧信道仍丢失原因，直接复核文件兜底给出。"""
+    """返回知识库未加载的可读原因，永远带上解析路径，避免「未知原因」无头排查。"""
     if KB_LOAD_ERROR:
-        return KB_LOAD_ERROR
+        return f"{KB_LOAD_ERROR}（路径：{KB_DATA_PATH}）"
     if KB is None:
-        _, err = _read_kb_bundle(KB_DATA_PATH)  # 兜底复核：确保任何情况下都能显示真实原因
-        return err or "未知原因（请查看控制台/云端日志）"
-    return "未知原因"
+        if not os.path.exists(KB_DATA_PATH):
+            return f"文件不存在（路径：{KB_DATA_PATH}）"
+        try:
+            with open(KB_DATA_PATH, encoding="utf-8-sig") as f:
+                d = json.load(f)
+        except Exception as e:
+            return f"JSON 解析失败：{type(e).__name__}：{e}（路径：{KB_DATA_PATH}）"
+        if not isinstance(d, dict) or "retrieval" not in d:
+            return f"文件可读取但结构异常：缺少 'retrieval' 字段（路径：{KB_DATA_PATH}）"
+        return f"文件已读取但 KB 仍为 None（路径：{KB_DATA_PATH}）"
+    return f"未知原因（KB 非 None，路径：{KB_DATA_PATH}）"
+
+def kb_status_info():
+    """知识库加载诊断：返回部署环境的真实状态，供状态面板与告警复用。"""
+    info = {
+        "loaded": KB is not None,
+        "path": KB_DATA_PATH,
+        "exists": os.path.exists(KB_DATA_PATH),
+        "size": None,
+        "parse_ok": None,
+        "keys": None,
+        "reason": kb_unload_reason(),
+    }
+    if info["exists"]:
+        try:
+            info["size"] = os.path.getsize(KB_DATA_PATH)
+        except Exception:
+            pass
+        try:
+            with open(KB_DATA_PATH, encoding="utf-8-sig") as f:
+                d = json.load(f)
+            info["parse_ok"] = True
+            info["keys"] = list(d.keys()) if isinstance(d, dict) else None
+        except Exception as e:
+            info["parse_ok"] = False
+            info["reason"] = f"JSON 解析失败：{type(e).__name__}：{e}（路径：{KB_DATA_PATH}）"
+    elif not info["reason"]:
+        info["reason"] = f"文件不存在（路径：{KB_DATA_PATH}）"
+    return info
 
 st.set_page_config(
     page_title="Fin Synagent · 多智能体协同智能投顾",
@@ -3187,8 +3223,27 @@ def _rag_step(t, d, eg):
             f'<b style="color:#1E3A6E;">📌 示例</b> · {eg}</div></div>')
 
 def render_kb():
-    if not KB:
-        st.error(f"知识库 bundle（kb_data.json）未加载：{kb_unload_reason()}。请确认文件存在且为有效 JSON。")
+    # 部署环境自诊断：无论是否加载成功都展示真实状态，彻底终结「未知原因」无头排查
+    _sti = kb_status_info()
+    st.markdown('<div class="sec-title">知识库加载状态</div>', unsafe_allow_html=True)
+    _c1, _c2 = st.columns([1, 3])
+    with _c1:
+        st.metric("加载状态", "✅ 已加载" if _sti["loaded"] else "⚠️ 未加载")
+    with _c2:
+        _parse = "成功" if _sti["parse_ok"] else ("失败" if _sti["parse_ok"] is False else "—")
+        st.caption(f"路径：`{_sti['path']}` ｜ 文件存在：{'是' if _sti['exists'] else '否'} ｜ 大小：{_sti['size'] or '—'} B ｜ JSON 解析：{_parse}")
+    if not _sti["loaded"]:
+        with st.expander("🔧 部署环境诊断详情", expanded=True):
+            st.code(
+                f"解析路径 : {_sti['path']}\n"
+                f"文件存在 : {_sti['exists']}\n"
+                f"文件大小 : {_sti['size']} 字节\n"
+                f"JSON解析 : {_parse}\n"
+                f"顶层键   : {_sti['keys']}\n"
+                f"失败原因 : {_sti['reason']}",
+                language="text",
+            )
+        st.error(f"知识库 bundle（kb_data.json）未加载：{_sti['reason']}。请确认文件已随仓库部署、且为有效 JSON（含 'retrieval' 字段）。")
         return
 
     stats = KB.get("kb_stats", {})
