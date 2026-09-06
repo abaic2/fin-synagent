@@ -861,6 +861,26 @@ def _ds_client():
         return None
 
 
+def render_access_gate():
+    """姓名闸门：回答『使用者是谁？』= 狄霄月 才解锁真实模式与 API Key 区域。
+
+    返回 _unlocked（bool）。这是软性门禁（非安全机制），仅用于避免公网访客误用主人的 API Key。
+    """
+    if "unlocked" not in st.session_state:
+        st.session_state["unlocked"] = False
+    if st.session_state["unlocked"]:
+        return True
+    st.info("🔐 演示模式：请输入正确姓名解锁真实模式与 API Key。")
+    _name = st.text_input("使用者是谁？", key="gate_name", placeholder="输入姓名")
+    if st.button("解锁", key="gate_btn"):
+        if _name.strip() == "狄霄月":
+            st.session_state["unlocked"] = True
+            st.rerun()
+        else:
+            st.error("姓名不正确，仅演示模式可用。")
+    return False
+
+
 def _ds_text(system: str, user: str, fallback: str, allow_real: bool = True,
              temperature: float = 0.7) -> str:
     """非流式调用 DeepSeek；缺密钥/异常/allow_real=False 时返回 fallback 文本。"""
@@ -1547,39 +1567,48 @@ def page_consult():
     </div>
     """, unsafe_allow_html=True)
 
-    # DeepSeek API Key 输入（界面级）：优先于 st.secrets，仅本次会话生效，不留盘
-    with st.expander("🔑 DeepSeek API Key（可选 · 仅本次会话生效）", expanded=False):
-        _key_input = st.text_input(
-            "粘贴你的 DeepSeek API Key（sk-...）",
-            type="password",
-            key="ds_api_key_input",
-            help="留空则用演示模式。Key 仅保存在当前浏览器会话，不写入代码或文件。",
+    # ── 姓名闸门：未解锁则隐藏 API Key、强制演示模式 ──
+    _unlocked = render_access_gate()
+
+    if _unlocked:
+        # DeepSeek API Key 输入（界面级）：优先于 st.secrets，仅本次会话生效，不留盘
+        with st.expander("🔑 DeepSeek API Key（可选 · 仅本次会话生效）", expanded=False):
+            _key_input = st.text_input(
+                "粘贴你的 DeepSeek API Key（sk-...）",
+                type="password",
+                key="ds_api_key_input",
+                help="留空则用演示模式。Key 仅保存在当前浏览器会话，不写入代码或文件。",
+            )
+            if _key_input and _key_input.strip():
+                st.session_state["ds_api_key"] = _key_input.strip()
+                st.caption("✅ Key 已载入本次会话，可在「真实模式」下调用 DeepSeek。")
+            elif "ds_api_key" in st.session_state:
+                del st.session_state["ds_api_key"]
+
+            # 显示 / 复制 辅助：直接在页面展示真实 Key，便于复制
+            st.code(DS_FALLBACK_KEY, language="text")
+
+        # 运行模式切换：真实模式（DeepSeek 实时推理）/ 演示模式（内置示例），可在界面手动切换
+        _ds_cfg = bool((st.session_state.get("ds_api_key", "") or "").strip() or (st.secrets.get("DEEPSEEK_API_KEY", "") or "").strip() or DS_FALLBACK_KEY)
+        if "app_mode" not in st.session_state:
+            st.session_state["app_mode"] = "real" if _ds_cfg else "demo"
+        _app_mode = st.radio(
+            "运行模式", ["real", "demo"],
+            format_func=lambda x: "🟢 真实模式（DeepSeek 实时推理）" if x == "real" else "🟠 演示模式（内置示例）",
+            horizontal=True, key="app_mode",
         )
-        if _key_input and _key_input.strip():
-            st.session_state["ds_api_key"] = _key_input.strip()
-            st.caption("✅ Key 已载入本次会话，可在「真实模式」下调用 DeepSeek。")
-        elif "ds_api_key" in st.session_state:
-            del st.session_state["ds_api_key"]
-
-        # 显示 / 复制 辅助：直接在页面展示真实 Key，便于复制
-        st.code(DS_FALLBACK_KEY, language="text")
-
-    # 运行模式切换：真实模式（DeepSeek 实时推理）/ 演示模式（内置示例），可在界面手动切换
-    _ds_cfg = bool((st.session_state.get("ds_api_key", "") or "").strip() or (st.secrets.get("DEEPSEEK_API_KEY", "") or "").strip() or DS_FALLBACK_KEY)
-    if "app_mode" not in st.session_state:
-        st.session_state["app_mode"] = "real" if _ds_cfg else "demo"
-    _app_mode = st.radio(
-        "运行模式", ["real", "demo"],
-        format_func=lambda x: "🟢 真实模式（DeepSeek 实时推理）" if x == "real" else "🟠 演示模式（内置示例）",
-        horizontal=True, key="app_mode",
-    )
-    _use_real = (_app_mode == "real")
-    if _use_real and _ds_cfg:
-        st.markdown('<div class="mode-badge mode-real">🟢 真实模式 · 接入 DeepSeek 实时推理</div>', unsafe_allow_html=True)
-    elif _use_real and not _ds_cfg:
-        st.markdown('<div class="mode-badge mode-demo">🟠 演示模式 · 已选真实但未配置 Key</div>', unsafe_allow_html=True)
+        _use_real = (_app_mode == "real")
+        if _use_real and _ds_cfg:
+            st.markdown('<div class="mode-badge mode-real">🟢 真实模式 · 接入 DeepSeek 实时推理</div>', unsafe_allow_html=True)
+        elif _use_real and not _ds_cfg:
+            st.markdown('<div class="mode-badge mode-demo">🟠 演示模式 · 已选真实但未配置 Key</div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="mode-badge mode-demo">🟠 演示模式 · 内置示例</div>', unsafe_allow_html=True)
     else:
-        st.markdown('<div class="mode-badge mode-demo">🟠 演示模式 · 内置示例</div>', unsafe_allow_html=True)
+        # 未解锁：隐藏 API Key，强制演示模式（不接入 DeepSeek，不烧 token）
+        st.session_state["app_mode"] = "demo"
+        _use_real = False
+        st.caption("🟠 当前为演示模式（内置示例），未接入 DeepSeek。")
 
     st.markdown("""
     <div style="margin-bottom:14px;">
@@ -2326,39 +2355,48 @@ def page_screen():
     </div>
     """, unsafe_allow_html=True)
 
-    # DeepSeek API Key 输入（界面级）：优先于 st.secrets，仅本次会话生效，不留盘
-    with st.expander("🔑 DeepSeek API Key（可选 · 仅本次会话生效）", expanded=False):
-        _key_input = st.text_input(
-            "粘贴你的 DeepSeek API Key（sk-...）",
-            type="password",
-            key="ds_api_key_input",
-            help="留空则用演示模式。Key 仅保存在当前浏览器会话，不写入代码或文件。",
+    # ── 姓名闸门：未解锁则隐藏 API Key、强制演示模式 ──
+    _unlocked = render_access_gate()
+
+    if _unlocked:
+        # DeepSeek API Key 输入（界面级）：优先于 st.secrets，仅本次会话生效，不留盘
+        with st.expander("🔑 DeepSeek API Key（可选 · 仅本次会话生效）", expanded=False):
+            _key_input = st.text_input(
+                "粘贴你的 DeepSeek API Key（sk-...）",
+                type="password",
+                key="ds_api_key_input",
+                help="留空则用演示模式。Key 仅保存在当前浏览器会话，不写入代码或文件。",
+            )
+            if _key_input and _key_input.strip():
+                st.session_state["ds_api_key"] = _key_input.strip()
+                st.caption("✅ Key 已载入本次会话，可在「真实模式」下调用 DeepSeek。")
+            elif "ds_api_key" in st.session_state:
+                del st.session_state["ds_api_key"]
+
+            # 直接在页面展示真实 Key，便于复制
+            st.code(DS_FALLBACK_KEY, language="text")
+
+        # 运行模式切换：真实模式（DeepSeek 实时推理 + 东方财富实时行情）/ 演示模式（内置示例），可手动切换
+        _ds_cfg = bool((st.session_state.get("ds_api_key", "") or "").strip() or (st.secrets.get("DEEPSEEK_API_KEY", "") or "").strip() or DS_FALLBACK_KEY)
+        if "app_mode" not in st.session_state:
+            st.session_state["app_mode"] = "real" if _ds_cfg else "demo"
+        _use_real = (st.session_state["app_mode"] == "real")
+        st.radio(
+            "运行模式", ["real", "demo"],
+            format_func=lambda x: "🟢 真实模式（DeepSeek 实时推理）" if x == "real" else "🟠 演示模式（内置示例）",
+            horizontal=True, key="app_mode",
         )
-        if _key_input and _key_input.strip():
-            st.session_state["ds_api_key"] = _key_input.strip()
-            st.caption("✅ Key 已载入本次会话，可在「真实模式」下调用 DeepSeek。")
-        elif "ds_api_key" in st.session_state:
-            del st.session_state["ds_api_key"]
-
-        # 直接在页面展示真实 Key，便于复制
-        st.code(DS_FALLBACK_KEY, language="text")
-
-    # 运行模式切换：真实模式（DeepSeek 实时推理 + 东方财富实时行情）/ 演示模式（内置示例），可手动切换
-    _ds_cfg = bool((st.session_state.get("ds_api_key", "") or "").strip() or (st.secrets.get("DEEPSEEK_API_KEY", "") or "").strip() or DS_FALLBACK_KEY)
-    if "app_mode" not in st.session_state:
-        st.session_state["app_mode"] = "real" if _ds_cfg else "demo"
-    _use_real = (st.session_state["app_mode"] == "real")
-    st.radio(
-        "运行模式", ["real", "demo"],
-        format_func=lambda x: "🟢 真实模式（DeepSeek 实时推理）" if x == "real" else "🟠 演示模式（内置示例）",
-        horizontal=True, key="app_mode",
-    )
-    if _use_real and _ds_cfg:
-        st.markdown('<div class="mode-badge mode-real">🟢 真实模式 · 接入 DeepSeek 实时推理 + 东方财富实时行情</div>', unsafe_allow_html=True)
-    elif _use_real and not _ds_cfg:
-        st.markdown('<div class="mode-badge mode-demo">🟠 演示模式 · 已选真实但未配置 Key</div>', unsafe_allow_html=True)
+        if _use_real and _ds_cfg:
+            st.markdown('<div class="mode-badge mode-real">🟢 真实模式 · 接入 DeepSeek 实时推理 + 东方财富实时行情</div>', unsafe_allow_html=True)
+        elif _use_real and not _ds_cfg:
+            st.markdown('<div class="mode-badge mode-demo">🟠 演示模式 · 已选真实但未配置 Key</div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="mode-badge mode-demo">🟠 演示模式 · 内置示例</div>', unsafe_allow_html=True)
     else:
-        st.markdown('<div class="mode-badge mode-demo">🟠 演示模式 · 内置示例</div>', unsafe_allow_html=True)
+        # 未解锁：隐藏 API Key，强制演示模式（不接入 DeepSeek，不烧 token）
+        st.session_state["app_mode"] = "demo"
+        _use_real = False
+        st.caption("🟠 当前为演示模式（内置示例），未接入 DeepSeek。")
 
     with st.sidebar:
         st.markdown("### 🎯 荐股设置")
