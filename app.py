@@ -1571,12 +1571,19 @@ def page_consult():
     _unlocked = render_access_gate()
 
     if _unlocked:
+        # 从 secrets 预填 API Key（仅当 widget 尚未初始化时），解锁后无需每次手动粘贴
+        _wkey = "ds_api_key_input_consult"
+        if _wkey not in st.session_state:
+            _sec_key = (st.secrets.get("DEEPSEEK_API_KEY", "") or "").strip()
+            if _sec_key:
+                st.session_state[_wkey] = _sec_key
+
         # DeepSeek API Key 输入（界面级）：优先于 st.secrets，仅本次会话生效，不留盘
         with st.expander("🔑 DeepSeek API Key（可选 · 仅本次会话生效）", expanded=False):
             _key_input = st.text_input(
                 "粘贴你的 DeepSeek API Key（sk-...）",
                 type="password",
-                key="ds_api_key_input",
+                key=_wkey,
                 help="留空则用演示模式。Key 仅保存在当前浏览器会话，不写入代码或文件。",
             )
             if _key_input and _key_input.strip():
@@ -1585,11 +1592,11 @@ def page_consult():
             elif "ds_api_key" in st.session_state:
                 del st.session_state["ds_api_key"]
 
-            # 出于安全不展示明文 Key；已配置则提示就绪，否则引导到 secrets / 粘贴
+            # 状态提示：已预填/已配置 vs 待配置
             if (st.secrets.get("DEEPSEEK_API_KEY", "") or "").strip() or (st.session_state.get("ds_api_key", "") or "").strip():
-                st.caption("🔒 Key 已配置（secrets 或本次会话），真实模式可用。出于安全不在此展示明文。")
+                st.caption("🔒 Key 已预填（来自 secrets 或本次会话），可在真实模式下调用 DeepSeek。")
             else:
-                st.caption("🔒 真实模式可用：在上方粘贴你的 Key，或在 Streamlit Cloud 后台 Secrets 配置 DEEPSEEK_API_KEY。出于安全不在此展示明文。")
+                st.caption("🔒 真实模式可用：在上方粘贴你的 Key，或在 Streamlit Cloud 后台 Secrets 配置 DEEPSEEK_API_KEY。")
 
         # 运行模式切换：真实模式（DeepSeek 实时推理）/ 演示模式（内置示例），可在界面手动切换
         _ds_cfg = bool((st.session_state.get("ds_api_key", "") or "").strip() or (st.secrets.get("DEEPSEEK_API_KEY", "") or "").strip() or DS_FALLBACK_KEY)
@@ -2362,12 +2369,19 @@ def page_screen():
     _unlocked = render_access_gate()
 
     if _unlocked:
+        # 从 secrets 预填 API Key（仅当 widget 尚未初始化时），解锁后无需每次手动粘贴
+        _wkey = "ds_api_key_input_screen"
+        if _wkey not in st.session_state:
+            _sec_key = (st.secrets.get("DEEPSEEK_API_KEY", "") or "").strip()
+            if _sec_key:
+                st.session_state[_wkey] = _sec_key
+
         # DeepSeek API Key 输入（界面级）：优先于 st.secrets，仅本次会话生效，不留盘
         with st.expander("🔑 DeepSeek API Key（可选 · 仅本次会话生效）", expanded=False):
             _key_input = st.text_input(
                 "粘贴你的 DeepSeek API Key（sk-...）",
                 type="password",
-                key="ds_api_key_input",
+                key=_wkey,
                 help="留空则用演示模式。Key 仅保存在当前浏览器会话，不写入代码或文件。",
             )
             if _key_input and _key_input.strip():
@@ -2376,11 +2390,11 @@ def page_screen():
             elif "ds_api_key" in st.session_state:
                 del st.session_state["ds_api_key"]
 
-            # 出于安全不展示明文 Key；已配置则提示就绪，否则引导到 secrets / 粘贴
+            # 状态提示：已预填/已配置 vs 待配置
             if (st.secrets.get("DEEPSEEK_API_KEY", "") or "").strip() or (st.session_state.get("ds_api_key", "") or "").strip():
-                st.caption("🔒 Key 已配置（secrets 或本次会话），真实模式可用。出于安全不在此展示明文。")
+                st.caption("🔒 Key 已预填（来自 secrets 或本次会话），可在真实模式下调用 DeepSeek。")
             else:
-                st.caption("🔒 真实模式可用：在上方粘贴你的 Key，或在 Streamlit Cloud 后台 Secrets 配置 DEEPSEEK_API_KEY。出于安全不在此展示明文。")
+                st.caption("🔒 真实模式可用：在上方粘贴你的 Key，或在 Streamlit Cloud 后台 Secrets 配置 DEEPSEEK_API_KEY。")
 
         # 运行模式切换：真实模式（DeepSeek 实时推理 + 东方财富实时行情）/ 演示模式（内置示例），可手动切换
         _ds_cfg = bool((st.session_state.get("ds_api_key", "") or "").strip() or (st.secrets.get("DEEPSEEK_API_KEY", "") or "").strip() or DS_FALLBACK_KEY)
