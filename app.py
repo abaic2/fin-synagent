@@ -3615,12 +3615,30 @@ sim = 1 - res["distances"][0][0]      # 余弦相似度（cosine 距离取补）
         _n_vague = sum(1 for r in _rows if r[3] == "宽泛")
         _n_sparse = sum(1 for r in _rows if r[3].startswith("稀疏"))
         with st.expander(f"📁 {_ind}（{len(_rows)} 条 · 核心 {_n_core} / 宽泛 {_n_vague} / 稀疏 {_n_sparse}）", expanded=False):
-            st.markdown(f"**✅ 核心（KB 已覆盖）· {_n_core} 条**")
-            st.markdown("<br>".join(f"· {r[1]}　<code>目标实体: {r[2]}</code>" for r in _rows if r[3].startswith("核心")))
-            st.markdown(f"**🔹 宽泛（无具体实体）· {_n_vague} 条**")
-            st.markdown("<br>".join(f"· {r[1]}" for r in _rows if r[3] == "宽泛"))
-            st.markdown(f"**⚠️ 稀疏（知识库未覆盖 · 诚实暴露缺口）· {_n_sparse} 条**")
-            st.markdown("<br>".join(f"· {r[1]}　<code>目标实体: {r[2]}</code>" for r in _rows if r[3].startswith("稀疏")))
+            # 核心查询
+            _core_rows = [r for r in _rows if r[3].startswith("核心")]
+            if _core_rows:
+                st.markdown(f"**✅ 核心（KB 已覆盖）· {len(_core_rows)} 条**")
+                st.dataframe(
+                    pd.DataFrame([{"查询": r[1], "目标实体": r[2]} for r in _core_rows]),
+                    use_container_width=True, hide_index=True
+                )
+            # 宽泛查询
+            _vague_rows = [r for r in _rows if r[3] == "宽泛"]
+            if _vague_rows:
+                st.markdown(f"**🔹 宽泛（无具体实体）· {len(_vague_rows)} 条**")
+                st.dataframe(
+                    pd.DataFrame([{"查询": r[1]} for r in _vague_rows]),
+                    use_container_width=True, hide_index=True
+                )
+            # 稀疏查询
+            _sparse_rows = [r for r in _rows if r[3].startswith("稀疏")]
+            if _sparse_rows:
+                st.markdown(f"**⚠️ 稀疏（知识库未覆盖 · 诚实暴露缺口）· {len(_sparse_rows)} 条**")
+                st.dataframe(
+                    pd.DataFrame([{"查询": r[1], "目标实体": r[2]} for r in _sparse_rows]),
+                    use_container_width=True, hide_index=True
+                )
     st.caption("上方「RAG 检索样本浏览器」可逐条点开任一查询，查看其真实 Top-5 召回片段与相似度，与本清单一一对应。稀疏查询因 KB 无对应实体，召回 Top-5 往往不命中目标——正是被拉低、也最真实的部分。类型判定由真实召回结果自动推导（命中目标实体来源=核心，否则=稀疏），与评测脚本口径一致。")
 
 # ============================================================== 页面：技能中心
