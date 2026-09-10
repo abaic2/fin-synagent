@@ -29,6 +29,23 @@ import collections
 import statistics
 
 
+# 构建指纹：运行时读取 git 短哈希，部署后可在页脚核对线上版本是否与本地一致
+def _app_build():
+    try:
+        import subprocess
+        _h = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+            capture_output=True, text=True, timeout=5,
+        )
+        if _h.returncode == 0 and _h.stdout.strip():
+            return _h.stdout.strip()
+    except Exception:
+        pass
+    return "unknown"
+APP_BUILD = _app_build()
+
+
 def compute_live_rag_metrics(retrieval, retrieval_entities=None):
     """从 kb_data.json 中真实召回样本（bge 模型实跑输出）实时统计可观测指标：
     Top-5 来源覆盖数、相似度均值/分布、相似度直方图。路由质量类（Recall/MRR/NDCG）
@@ -4010,4 +4027,4 @@ if st.session_state.get("mode") == "lite" and choice not in NAV_PAGES_LITE:
 
 PAGES[choice]()
 
-st.markdown('<div class="footer">🚩 Fin Synagent · 基于大语言模型的多智能体人机协同投顾推理模式 · 仅供演示</div>', unsafe_allow_html=True)
+st.markdown(f'<div class="footer">🚩 Fin Synagent · 基于大语言模型的多智能体人机协同投顾推理模式 · 仅供演示 · build <code>{APP_BUILD}</code></div>', unsafe_allow_html=True)
