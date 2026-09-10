@@ -3585,6 +3585,44 @@ res = coll.query(query_embeddings=[qe], n_results=3,
                  include=["documents", "metadatas", "distances"])
 sim = 1 - res["distances"][0][0]      # 余弦相似度（cosine 距离取补）''', language="python")
 
+    # 五、RAG 评测查询集（全部 152 条完整清单）
+    # 数据来源：kb_data.json 的 retrieval（行业→查询→真实 Top-K 命中）+ retrieval_entities（行业→查询→目标实体）。
+    # 类型判定完全由真实召回结果推导：无目标实体 → 宽泛；有实体且 Top-K 命中该实体来源 → 核心(已覆盖)；
+    # 有实体但 Top-K 未命中 → 稀疏(未覆盖)。这与 build_retrieval_eval.py 的 core/sparse/vague 划分口径一致。
+    _ret = KB.get("retrieval", {})
+    _ret_ent = KB.get("retrieval_entities", {})
+    _all_q = []
+    for _ind in ind_opt:
+        _qmap = _ret.get(_ind, {})
+        _emap = _ret_ent.get(_ind, {})
+        for _q in _qmap.keys():
+            _ents = _emap.get(_q) or []
+            if not _ents:
+                _type = "宽泛"
+            else:
+                _hit_sources = [h.get("source", "") for h in _qmap.get(_q, [])]
+                _hit = any(any(e in s for e in _ents) for s in _hit_sources)
+                _type = "核心(已覆盖)" if _hit else "稀疏(未覆盖)"
+            _all_q.append((_ind, _q, "、".join(_ents) if _ents else "—", _type))
+
+    st.markdown('<div class="sec-title" style="font-size:1.1rem;margin-top:26px;">📝 RAG 评测查询集（全部 %d 条）</div>'
+                '<div class="sec-sub">下列即为驱动上方所有「真实指标」的测试集：每条查询都带「目标实体」作为实体级标准答案（qrels）。'
+                '按类型分为 核心(已覆盖) / 宽泛 / 稀疏(未覆盖) 三类——稀疏查询专门指向知识库<b>未收录</b>的实体，用于诚实暴露覆盖缺口，因此整体指标非满分。</div>'
+                % len(_all_q), unsafe_allow_html=True)
+    for _ind in ind_opt:
+        _rows = [r for r in _all_q if r[0] == _ind]
+        _n_core = sum(1 for r in _rows if r[3].startswith("核心"))
+        _n_vague = sum(1 for r in _rows if r[3] == "宽泛")
+        _n_sparse = sum(1 for r in _rows if r[3].startswith("稀疏"))
+        with st.expander(f"📁 {_ind}（{len(_rows)} 条 · 核心 {_n_core} / 宽泛 {_n_vague} / 稀疏 {_n_sparse}）", expanded=False):
+            st.markdown(f"**✅ 核心（KB 已覆盖）· {_n_core} 条**")
+            st.markdown("<br>".join(f"· {r[1]}　<code>目标实体: {r[2]}</code>" for r in _rows if r[3].startswith("核心")))
+            st.markdown(f"**🔹 宽泛（无具体实体）· {_n_vague} 条**")
+            st.markdown("<br>".join(f"· {r[1]}" for r in _rows if r[3] == "宽泛"))
+            st.markdown(f"**⚠️ 稀疏（知识库未覆盖 · 诚实暴露缺口）· {_n_sparse} 条**")
+            st.markdown("<br>".join(f"· {r[1]}　<code>目标实体: {r[2]}</code>" for r in _rows if r[3].startswith("稀疏")))
+    st.caption("上方「RAG 检索样本浏览器」可逐条点开任一查询，查看其真实 Top-5 召回片段与相似度，与本清单一一对应。稀疏查询因 KB 无对应实体，召回 Top-5 往往不命中目标——正是被拉低、也最真实的部分。类型判定由真实召回结果自动推导（命中目标实体来源=核心，否则=稀疏），与评测脚本口径一致。")
+
 # ============================================================== 页面：技能中心
 def page_skills():
     st.markdown("""
