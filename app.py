@@ -3597,6 +3597,56 @@ sim = 1 - res["distances"][0][0]      # 余弦相似度（cosine 距离取补）
             st.dataframe(_df, use_container_width=True, hide_index=True)
     st.caption("本清单即上文 Recall@5 / NDCG@5 / 精确chunk命中率@5 等指标的评测语料：查询由语料自身生成、qrels 为来源主体，完全无需人工标注。黄金段落未进 Top-5 的查询越多，说明检索器越倾向召回通用模板段而非具体事实段——与精确 chunk 命中率指标相互印证，也指明后续用 cross-encoder 重排或难负样本微调的优化方向。")
 
+    # 六、RAG 生成质量评价指标（Generation Metrics · RAGAS 对齐）
+    # 与上方检索指标配套，补齐 RAG 评测的「生成」一半：忠实度 / 答案相关性 / 上下文利用率。
+    # 数据来源：build_generation_eval.py（镜像线上专家 prompt 生成答案 + DeepSeek LLM-as-Judge 判定）。
+    gen = KB.get("generation_eval", {})
+    if gen:
+        go = gen.get("overall", {})
+        gmode = gen.get("mode", "proxy")
+        st.markdown('<div class="sec-title" style="margin-top:30px;">RAG 生成质量评价指标（Generation Metrics）</div>'
+                    '<div class="sec-sub">完整 RAG 评测 = 检索指标（翻对资料没）+ 生成指标（答案基于资料 / 无幻觉 / 切题 / 真用上资料）。'
+                    '本栏三项为业界标准 RAGAS 集合核心指标，由评测脚本<strong>镜像线上「专家智能体」完全相同的 prompt</strong>生成答案、'
+                    '再让 DeepSeek 当裁判（LLM-as-Judge）逐项打分（0~1）。</div>', unsafe_allow_html=True)
+        if gmode == "proxy":
+            st.warning("⚠️ 当前为**离线代理指标**（非 LLM 判定）：忠实度(Faithfulness) 离线不可得；答案相关性/上下文利用率以确定性离线代理估算，"
+                       "仅供方向性参考。配置 `DEEPSEEK_API_KEY` 后本地运行 `build_generation_eval.py` 即得真实 LLM 判定值。")
+        if gmode == "llm":
+            gen_rows = [
+                (f'{go.get("faithfulness", {}).get("mean", 0):.1%}', "Faithfulness 忠实度"),
+                (f'{go.get("answer_relevance", {}).get("mean", 0):.1%}', "Answer Relevance 答案相关性"),
+                (f'{go.get("context_utilization", {}).get("mean", 0):.1%}', "Context Utilization 上下文利用率"),
+            ]
+        else:
+            gen_rows = [
+                (f'{go.get("answer_relevance_proxy", {}).get("mean", 0):.1%}', "答案相关性(代理·问题词项覆盖率)"),
+                (f'{go.get("context_utilization_proxy", {}).get("mean", 0):.1%}', "上下文利用率(代理·Top5实体相关占比)"),
+                ("待 LLM", "Faithfulness 忠实度(需 LLM)"),
+            ]
+        for col, (v, k) in zip(st.columns(3), gen_rows):
+            with col:
+                st.markdown(f'<div class="kpi"><div class="v">{v}</div><div class="k">{k}</div></div>', unsafe_allow_html=True)
+        st.caption("Faithfulness（忠实度）：答案是否完全基于检索片段、无幻觉；Answer Relevance（答案相关性）：是否切题、直接回应问题；"
+                   "Context Utilization（上下文利用率）：是否真正用上检索片段中的具体信息。三者皆 0~1，越高越好。"
+                   "评测口径与 RAGAS 对齐——生成质量与检索质量解耦度量：即便检索召回强（Recall@5≈98%），生成端仍须独立验证「不编造、切题、引用资料」。"
+                   "本评测用与线上**完全相同的增强提示词**生成答案，因此测得的是「真实生产链路」的生成质量，而非另起炉灶的演示。")
+        with st.expander("🔍 生成样本浏览器（点击展开 · 看真实生成答案与裁判打分）", expanded=False):
+            gs = gen.get("samples", [])
+            if gs:
+                _gdf = pd.DataFrame([{
+                    "行业": s.get("industry", ""),
+                    "查询": s.get("query", ""),
+                    "生成答案": (s.get("answer", "") or "")[:180],
+                    "答案相关性": s.get("answer_relevance"),
+                    "上下文利用率": s.get("context_utilization"),
+                    "忠实度": s.get("faithfulness") if gmode == "llm" else "—",
+                } for s in gs])
+                st.dataframe(_gdf, use_container_width=True, hide_index=True)
+            else:
+                st.info("无生成样本。")
+    else:
+        st.info("尚未生成 generation_eval。运行 `build_generation_eval.py` 可补齐生成质量指标（需 DEEPSEEK_API_KEY 获取真实 LLM 判定，否则产出离线代理指标）。")
+
 # ============================================================== 页面：技能中心
 def page_skills():
     st.markdown("""
