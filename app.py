@@ -1549,21 +1549,43 @@ def _render_consult_lite():
     """, unsafe_allow_html=True)
     st.markdown('<div class="sec-title" style="margin-top:22px;">一、Fin Synagent Consult 任务</div>'
                 '<div class="sec-sub">七步流水线：从你的一句话，到一份带出处的结论</div>', unsafe_allow_html=True)
-    _steps = [
-        ("1. 用户输入", "你用自然语言提出投资疑问（如「白酒最近还能不能配？」）。"),
-        ("2. Leader Agent：拆解、分配任务", "相当于「会议主持人」，把大问题拆成几个小任务（宏观面 / 估值面 / 风险面）并分派给专家。"),
-        ("3. RAG", "去行业知识库里翻出最相关的几段原文（带页码），作为后续作答的依据。"),
-        ("4. Expert Agent：专家作答", "搭建白酒、贵金属、红利行业知识库；采用 RAG 检索，基于资料写出结构化分析。"),
-        ("5. Critic Agent：寻找可疑数据、结论", "采用 qstock 库获取行业背景、企业财报，寻找可疑数据与结论。"),
-        ("6. Verify Agent：事实校验", "把输出内容与网络检索数据以及知识库数据进行比对，抑制模型幻觉。"),
-        ("7. Summary Agent：得出结论", "汇总前面成果，给出可执行结论并邀请你继续追问。"),
-    ]
-    for title, body in _steps:
-        st.markdown(
-            f'<div class="step" style="border-left-color:#4A6FD4;">'
+
+    def _step(title, pro, plain, color="#4A6FD4"):
+        return (
+            f'<div class="step" style="border-left-color:{color};">'
             f'<b>{title}</b><br>'
-            f'<span style="color:#44506A;font-size:.92rem;">{body}</span>'
-            f'</div>', unsafe_allow_html=True)
+            f'<span style="color:#1E3A6E;font-size:.86rem;font-weight:600;">📘 专业讲解</span><br>'
+            f'<span style="color:#44506A;font-size:.9rem;">{pro}</span><br>'
+            f'<span style="color:#1E7A4D;font-size:.86rem;font-weight:600;">🗣 大白话</span><br>'
+            f'<span style="color:#3A6B4A;font-size:.9rem;">{plain}</span>'
+            f'</div>'
+        )
+
+    _steps = [
+        ("1. 用户输入",
+         "系统接收用户的自然语言投资疑问。线上标准版会先经「姓名闸门」做权限与演示模式判定，再进入 Multi-Agent 状态图；问题原样保留为各 Agent 共享的会话上下文，不提前改写，确保后续看到的是用户真实意图。",
+         "你扔一句话进来，比如「白酒最近还能不能配？」。系统先把问题记下来、不瞎改，后面所有 AI 都围着这句话转。"),
+        ("2. Leader Agent：拆解、分配任务",
+         "编排中枢，基于 LangGraph 状态图实现。按分析维度（宏观面 / 估值面 / 基本面 / 风险面）把问题拆为若干子任务，并为每个子任务生成结构化提示词分派给对应行业 Expert。拆解粒度可随用户补充动态调整（人机协同），决定后续分析的覆盖面与专业性。",
+         "就像会议主持人。听完问题，把大目标拆成几张小工单——「宏观谁看、估值谁看、风险谁看」，分给底下专家去写。"),
+        ("3. RAG",
+         "检索增强环节：用 BAAI/bge 中文嵌入模型把问题编码为向量，在 Chroma 向量库按行业 collection 做余弦 Top-K 召回，取出最相关 chunk（带 PDF 来源与页码）注入 Expert 提示词作参考。作答有可追溯依据而非凭记忆生成。本项目检索 Recall@5≈96.3%、来源覆盖≈2.5。",
+         "资料员出场。把问题也变成一串数字（向量），去「带索引的私人图书馆」翻出最像的几页原文，连页码都带着，专家必须看着资料写。"),
+        ("4. Expert Agent：专家作答",
+         "各行业专家 Agent（白酒 / 红利 / 贵金属 / 宏观）基于子任务 + RAG 注入的参考资料生成结构化分析。遵循约束式 Prompt：分点论述、加粗结论、给风险提示，每条结论标注来源 [XXX.pdf pNN]。基座为金融微调版星火大模型，领域口吻稳定。",
+         "行业分析师动笔。拿着资料员递来的原文，按主持人分的工单，写一份带数据、分点、还能标「这句出自哪份文件第几页」的分析稿。"),
+        ("5. Critic Agent：寻找可疑数据、结论",
+         "独立批评智能体，对 Expert 输出做自我对抗式审查：核对数值口径、逻辑一致性、结论具体性、有无遗漏风险。本项目还会调用 qstock 库拉实时行业背景与企业财报交叉验证，把「看似对但站不住」的点挑出，返回修订意见给 Expert 完善。",
+         "挑刺同事。不写稿，专门找茬——口径对不对、逻辑通不通、风险漏没漏。必要时拉实时行情财报对一遍，把不靠谱的打回去改。"),
+        ("6. Verify Agent：事实校验",
+         "抑制幻觉的最后一道闸。把最终答案与「知识库原文 + 联网检索数据」逐条比对，验证关键数字 / 实体 / 结论真实性，对无法溯源或矛盾的触发告警或回写修正。由生成质量的「忠实度(Faithfulness)」独立度量，本项目≈0.90。",
+         "事实核查员。防胡说八道的最后关口——把最终答案和「图书馆原文 + 网上实时数据」一条条对，对不上、查不到的，直接报警或打回去。"),
+        ("7. Summary Agent：得出结论",
+         "汇总 Leader 拆解、多 Expert 分析、Critic 修订与 Verify 校验的全部成果，提炼为可执行结论（含投资逻辑、关键依据、风险提示），以可继续追问的形式交付，形成「对话—修订—再追问」闭环。结论均可回溯到具体来源，保证可解释性。",
+         "汇报人。把前面所有人的成果收拢成一份「能直接用、还带出处」的总结，并主动问你「还要深入哪块？」，让你接着往下聊。"),
+    ]
+    for title, pro, plain in _steps:
+        st.markdown(_step(title, pro, plain), unsafe_allow_html=True)
     st.info("💡 切到「标准版」可输入问题，实时观看多智能体流水线逐步跑通（演示模式内置示例，无需配置 Key）。")
 
 
@@ -1578,24 +1600,69 @@ def _render_screen_lite():
     st.markdown('<div class="sec-title" style="margin-top:22px;">二、Fin Synagent Screen 任务</div>'
                 '<div class="sec-sub">三层结构：数据获取 → 四维特征 → 汇聚决策</div>', unsafe_allow_html=True)
 
-    def _step(title, color="#4A6FD4", indent=0):
-        _ml = f"margin-left:{indent}px;" if indent else ""
-        return f'<div class="step" style="border-left-color:{color};{_ml}"><b>{title}</b></div>'
+    def _layer(title, pro, plain, color="#4A6FD4"):
+        return (
+            f'<div class="step" style="border-left-color:{color};">'
+            f'<b>{title}</b><br>'
+            f'<span style="color:#1E3A6E;font-size:.86rem;font-weight:600;">📘 专业讲解</span><br>'
+            f'<span style="color:#44506A;font-size:.9rem;">{pro}</span><br>'
+            f'<span style="color:#1E7A4D;font-size:.86rem;font-weight:600;">🗣 大白话</span><br>'
+            f'<span style="color:#3A6B4A;font-size:.9rem;">{plain}</span>'
+            f'</div>'
+        )
 
-    st.markdown(_step("1. 用户输入"), unsafe_allow_html=True)
-    st.caption("　你选择目标行业与风险偏好（保守 / 平衡 / 进取）。")
+    def _sub(label, note, color="#9DB0DE"):
+        return (
+            f'<div class="step" style="border-left-color:{color};margin-left:18px;font-size:.88rem;">'
+            f'<b>{label}</b>'
+            f'<span style="color:#5A6478;font-size:.85rem;"> — {note}</span>'
+            f'</div>'
+        )
 
-    st.markdown(_step("2. 数据获取层"), unsafe_allow_html=True)
-    for t in ["（1）实时行情获取", "（2）意图解析", "（3）股票池构建", "（4）个股评论抓取"]:
-        st.markdown(_step(t, color="#B9C6E6", indent=16), unsafe_allow_html=True)
+    # 1. 用户输入
+    st.markdown(_layer("1. 用户输入",
+        "用户在前端选定目标行业（白酒 / 红利 / 贵金属 / 宏观）与风险偏好（保守 / 平衡 / 进取）。偏好被编码为筛选约束（如保守→要求高股息、低波动），作为后续四维特征加权的依据。",
+        "你选好「看哪个行业、能承受多大风险」。系统把偏好翻译成筛选条件，后面打分就按这个来。"),
+        unsafe_allow_html=True)
 
-    st.markdown(_step("3. 四维特征层"), unsafe_allow_html=True)
-    for t in ["（1）基本面特征", "（2）技术面特征", "（3）情绪面特征", "（4）行业面特征"]:
-        st.markdown(_step(t, color="#B9C6E6", indent=16), unsafe_allow_html=True)
+    # 2. 数据获取层
+    st.markdown(_layer("2. 数据获取层",
+        "流水线最前端的「原料备齐」阶段：① 实时行情获取个股最新价 / 涨跌幅 / 成交量；② 意图解析把行业 + 偏好映射为结构化筛选条件；③ 股票池构建按行业过滤 + 基础门槛（市值、是否 ST）圈定候选子集；④ 个股评论抓取股吧 / 论坛评论，为情绪面特征备料。",
+        "先把原料备齐——拉实时股价、弄明白你想要啥、圈定一个候选小圈子、再把股民评论扒下来。"),
+        unsafe_allow_html=True)
+    for t, n in [
+        ("（1）实时行情获取", "拉个股最新价、涨跌、成交量等盘口数据"),
+        ("（2）意图解析", "把「行业 + 偏好」翻译成结构化筛选条件"),
+        ("（3）股票池构建", "按行业过滤 + 门槛（市值 / 非 ST）圈定候选"),
+        ("（4）个股评论抓取", "抓股吧论坛评论，给情绪面备料"),
+    ]:
+        st.markdown(_sub(t, n), unsafe_allow_html=True)
 
-    st.markdown(_step("4. 汇聚决策层"), unsafe_allow_html=True)
-    for t in ["（1）四维特征汇聚", "（2）LLM 综合评分", "（3）分析师观点与推荐理由", "（4）校验与反思"]:
-        st.markdown(_step(t, color="#B9C6E6", indent=16), unsafe_allow_html=True)
+    # 3. 四维特征层
+    st.markdown(_layer("3. 四维特征层",
+        "对股票池每只候选做四维度特征提取，拼成个股画像：① 基本面（营收 / 净利 / 毛利率 / ROE / 估值分位）；② 技术面（均线 / MACD / 量价形态）；③ 情绪面（股吧评论情感极性与热度）；④ 行业面（行业景气度 / 政策催化 / 上下游位置）。四维度解耦，便于分别解释与加权。",
+        "给每只候选股票做「四体检」——财报健不健康、技术图形强不强、股民情绪热不热、所在行业景气不景气。"),
+        unsafe_allow_html=True)
+    for t, n in [
+        ("（1）基本面特征", "营收、净利、ROE、估值分位等硬指标"),
+        ("（2）技术面特征", "均线、MACD、量价形态等技术信号"),
+        ("（3）情绪面特征", "股吧评论情感极性、讨论热度"),
+        ("（4）行业面特征", "行业景气、政策催化、上下游位置"),
+    ]:
+        st.markdown(_sub(t, n), unsafe_allow_html=True)
+
+    # 4. 汇聚决策层
+    st.markdown(_layer("4. 汇聚决策层",
+        "决策收口阶段：① 四维特征汇聚成个股画像；② LLM 以资深分析师视角对每只打 0–100 分（如茅台 91.2）；③ 生成推荐标的 + 可解释推荐理由与分析师观点；④ 校验与反思做一致性自检与风险提示，声明模拟数据、不构成投资建议。",
+        "汇总打分挑状元——把四张体检单合成总分排名，挑前几名写清「为什么推荐」，最后附「投资有风险、这是模拟数据」。"),
+        unsafe_allow_html=True)
+    for t, n in [
+        ("（1）四维特征汇聚", "把四个维度拼成一张个股画像"),
+        ("（2）LLM 综合评分", "资深分析师视角打 0–100 分排名"),
+        ("（3）分析师观点与推荐理由", "挑出标的 + 写清为什么推荐"),
+        ("（4）校验与反思", "一致性自检 + 风险提示，声明模拟数据"),
+    ]:
+        st.markdown(_sub(t, n), unsafe_allow_html=True)
 
     st.info("💡 切到「标准版」可选择行业与风险偏好，实时运行筛选树（演示模式内置示例行情，无需配置 Key）。")
 
