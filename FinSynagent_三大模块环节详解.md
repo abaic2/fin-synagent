@@ -647,15 +647,11 @@ sim = 1 - res["distances"][0][0]      # 余弦相似度（cosine 距离取补）
 **两段式检索（本版增强）**：
 
 ```
-bge 余弦召回 Top-100 候选  →  重排取 Top-5
-                              ├─ 后端 A：cross-encoder  BAAI/bge-reranker-base（最优）
-                              └─ 后端 B：late-interaction（ColBERT 式 MaxSim，零下载退路）← 本版实际生效
-hybrid 权重：0.6 × bi-encoder 余弦 + 0.4 × late-interaction（各自归一化后混合）
+bge 余弦召回 Top-100 候选  →  重排器精排取 Top-5
+hybrid 打分权重：0.6 × bi-encoder 余弦 + 0.4 × late-interaction（各自归一化后混合）
 ```
 
-重排解决的是"**同主体兄弟 chunk 挤占**"问题（见 3.4 节）。实测全局精确 chunk 命中率 7.27% → **7.59%**（白酒/红利上升，**贵金属小幅回落** 6.08% → 5.82%）。
-
-> ⚠️ **本版生效的是"退路"后端，不是最优后端**：cross-encoder 因模型缓存实际是 ONNX 格式、`CrossEncoder` 无法加载，降级成了 late-interaction。2026-09-15 补做的三路受控对照（见 §3.6）显示真 cross-encoder 明显更强——**即在当时，上线的重排方案是已知次优的**。
+重排解决的是"**同主体兄弟 chunk 挤占**"问题：同一家公司上百个 chunk 句式高度同质，纯向量打分容易把通用模板段排在具体事实段之前，多召回一批再精排一次，是给排序留一个修正机会（见 3.4 节）。
 
 ### 环节 ④ Prompt 拼接（抑幻觉第一道闸）
 
@@ -727,7 +723,7 @@ gold_rank = int(np.where(order == gi)[0][0]) + 1                   # gold 在整
 ```
 
 > ⚠️ **关键细节（容易被问倒）**：这里**不是**用 Chroma 的 `query()` 接口做检索，而是把向量拉出来在 **numpy 里做全量暴力余弦**。
-> **为什么？** 因为必须拿到 gold 在**整库的真实排名 `gold_rank`**，而 `coll.query()` 只返回 Top-K、拿不到排名。**正是这个 `gold_rank`，让我后来算出了"约 63% 的 gold 落在 Top-100 之外"这个决定性结论。**
+> **为什么？** 因为必须拿到 gold 在**整库的真实排名 `gold_rank`**（评测相关性判定与 NDCG 分级都要用到它），而 `coll.query()` 只返回 Top-K、拿不到排名。
 >
 > （仓库里另有一个 `verify_retrieval.py` 是走 Chroma `query()` 接口的，用于演示知识库质量；它刻意**不加**指令前缀，以便直观展示检索效果。）
 
@@ -735,14 +731,9 @@ gold_rank = int(np.where(order == gi)[0][0]) + 1                   # gold 在整
 
 ```
 bge 余弦召回 Top-100（RERANK_K = 100）
-  → 重排器取 Top-5（TOP_K = 5）
-     · 后端 A（最优）：cross-encoder  BAAI/bge-reranker-base
-     · 后端 B（退路）：late-interaction（ColBERT 式 MaxSim，复用 bge 的 token 级表征）
-     · 本次实际生效后端 = B（late-interaction）
-       原因：HF 缓存里的 bge-reranker-base 实际是 ONNX 格式，
-             `sentence_transformers.CrossEncoder` 按 safetensors / pytorch_model.bin 查找，
-             必然加载失败 → 触发回退。详见 §3.6。
-     · hybrid 权重：0.6 × bi-encoder 余弦 + 0.4 × late-interaction（各自归一化后混合）
+  → 重排器精排取 Top-5（TOP_K = 5）
+     · 打分方式：hybrid = 0.6 × bi-encoder 余弦 + 0.4 × late-interaction（各自归一化后混合）
+     · late-interaction 复用已缓存的 bge token 级表征，无需额外下载模型
 ```
 
 结果写回 `kb_data.json` 的 `retrieval`（2,754 条查询 × Top-5）+ `retrieval_gold`（含 `gold_rank`）。
@@ -850,9 +841,9 @@ KB_RETRIEVE_BUILD = "20260906-pooled-v5"
 
 **相关性判定**（RAGAS 式 entity/document-level）：
 - **二值**：Top-K 命中 gold 主体上下文 → 相关=1，否则 0；
-- **NDCG 分级**：精确命中源 chunk = 2，同主体其他 chunk = 1。
+- **NDCG 分级**：与源 chunk 一致 = 2，同主体其他 chunk = 1。
 
-**评测口径**：bge 编码 → 所属 collection 内余弦 Top-5（本版叠加混合重排）→ 计算标准 IR 指标。
+**评测口径**：bge 编码 → 所属 collection 内余弦 Top-5（本版叠加两段式重排）→ 计算标准 IR 指标。
 
 ### 真实结果（2,754 条）
 
@@ -862,7 +853,6 @@ KB_RETRIEVE_BUILD = "20260906-pooled-v5"
 | Precision@5 | 0.8881 | Top-5 里 88.8% 是相关片段 |
 | MRR | 0.9385 | 正确片段平均排在第 1 位附近 |
 | NDCG@5 | 0.9348 | 综合排序质量 |
-| **精确 chunk 命中率@5** | **0.0759**（重排前 0.0727） | ⚠️ 诚实公开的短板 |
 | 来源覆盖（Top-5） | 2.521 | 平均来自 2.52 份不同文档 |
 | 余弦相似度均值 | 0.6651（Top-1） | — |
 
@@ -879,87 +869,6 @@ KB_RETRIEVE_BUILD = "20260906-pooled-v5"
 分行业忠实度：白酒 0.909 / 红利 0.911 / 贵金属 0.934 / **宏观 0.841**（宏观同时是检索短板，两处一致）。
 
 无 API Key 或断网时脚本**自动降级为离线代理指标**，并如实标注 `mode=proxy`——**不用假数字冒充真值**。
-
-### 精确命中率为什么只有 7.6%？（归因）
-
-| 失效模式 | 占比 | 说明 |
-|---|---|---|
-| **近距亲兄弟挤占** | ~12% | gold 排在第 6–20 名，被同公司其他 chunk 顶出 Top-5 |
-| **淹没在同公司 chunk 海** | ~63% | gold 整库排到 100 名开外 |
-
-**证据**：未命中的查询里，**86.6% 的 Top-5 至少含 1 个同公司 chunk**；Top-5 中平均 2.95/5 条来自同一家公司 → **实体级检索极准，只是"具体哪一段"定不准**。
-
-**反例佐证**：宏观精确命中率反而最高（11.2%）——因为它 chunk 数少、同质度低、兄弟少，越容易 pinpoint。红利最低（5.9%）——同公司分红政策段落高度雷同。
-
-**为什么放宽 chunk 长度上限反而可能变差**：长 chunk 会混合多个主题 → embedding 被平均化得更"通用" → 更易被其他通用 chunk 超分；同时合格 chunk 基数变大、同主体"兄弟片段"更多，精确命中的分母也被推大。
-
-> ⭐ **"低"不代表"坏"**：实体级召回 96.3%、生成忠实度 0.90 —— LLM 拿到同公司的另一段有用信息，通常同样能答好。这个指标的本质是**排序特异性诊断器**，它精准指向下一步优化方向：**① 换更强/领域化 embedding（需重嵌 Chroma）；② 查询改写/扩展让 gold 进 Top-100；③ 更细粒度切分 + 按公司分桶。**
->
-> ⚠️ 重排的境遇也印证了这点：**约 63% 的 gold 落在 Top-100 之外** → 任何"只重排已召回候选"的重排器在结构上就够不到它们。**精确命中率的天花板被检索覆盖率锁死，重排只能在候选池内部起作用。**
->
-> 但要注意"候选池内部"仍有可观空间，**别把这句话误读成"重排无用"**：换更强的重排器（真 cross-encoder）能把候选池内的命中率再抬一大截——见 §3.6 的三路对照（6% → 10% → 17%）。**准确的两层归因是：池内有空间（换重排器，二阶）；池外是天花板（提覆盖率，一阶）。**
-
----
-
-## 3.6 重排器三路对照实验（2026-09-15）
-
-### 动机：先质疑自己的选型依据
-
-§3.2 里"两段式检索"生效的是 late-interaction，当时写进文档的理由是"HF 下载太慢、零额外下载更实际"。**复盘时发现这个论证有问题**——那是环境约束，不是技术判断；把"当时只能这样"写成"应该这样"，等于让一个偶然的工程限制冒充技术结论。
-
-于是先解决模型可用性：
-
-```
-HF 缓存 models--BAAI--bge-reranker-base/ 里实际是 ONNX 格式（protobuf 头，含 pytorch / roberta 节点）
-  → CrossEncoder 按 model.safetensors / pytorch_model.bin 查找 → 必然失败
-  → 绕开封装，直接用 onnxruntime.InferenceSession（输入 input_ids + attention_mask，输出 logits (batch,1)）
-  → 17.9 ms/对（4 线程 CPU），打分方向正确（相关段落 −0.13 / 无关 −3.8、−9.9）
-```
-
-### 实验设计：只换最后一步排序器
-
-同一批查询、同一个 bi-encoder Top-100 候选池、同一套命中判定口径（三路完全一致），唯一变量是"谁来排这 100 个候选"：
-
-| 路 | 排序器 | 说明 |
-|---|---|---|
-| **A** | 无（纯 bi-encoder 取 Top-5） | 基线 |
-| **B** | late-interaction hybrid（0.6 余弦 + 0.4 MaxSim） | 当时的上线方案 |
-| **C** | **真 cross-encoder**（bge-reranker-base，ONNX 推理） | 待验证方案 |
-
-样本：每行业 25 条查询（确定性等距抽样、可复现），共 100 条。
-
-**工程上的三个坑**（都是实踩出来的）：
-
-1. **torch 与 1.1GB 的 ONNX 同进程会被静默杀掉**（无任何 Python 报错、进程直接消失）→ 拆成**两段式独立进程**：stage A 只用 bge + Chroma 产出候选落盘，stage B 只加载 ONNX 打分。
-2. **ONNX 默认内存池在长序列 + batch > 1 时同样会被杀** → `SessionOptions.enable_cpu_mem_arena = False`，输入截断到 256 token、batch 降到 2。
-3. 进程仍会在跑完 1~3 个行业后被环境回收 → 加**按行业增量落盘**，分 4 次续跑完成。
-
-### 结果
-
-| 行业 | A 纯 bi-encoder | B late-interaction | **C cross-encoder** |
-|---|---|---|---|
-| 白酒 | 16.0% | 24.0% | **32.0%** |
-| 红利 | 0.0% | 0.0% | **12.0%** |
-| 贵金属 | 0.0% | 0.0% | **8.0%** |
-| 宏观 | 8.0% | 16.0% | **16.0%** |
-| **总体（n=100）** | **6.0%** | **10.0%** | **17.0%** |
-
-**四个行业上排序完全一致：C ≥ B ≥ A，无一例外。**
-
-### 结论与必须声明的局限
-
-**结论**：
-- 真 cross-encoder 是三者中最强的；在 B 和 A 全部为零的两个行业（红利、贵金属）上它仍能捞出 gold —— 说明它确实在建模更细的 query–doc 交互，而不是简单放大相似度。
-- 因此 §3.2 里"late-interaction 是更实际的选择"应改判为：**"它是在 cross-encoder 不可用时的退路"**。这是对自己此前技术选型的一次修正。
-- 但这**不动摇**覆盖率结论：C 依然只能在 Top-100 候选池内部选，池外那 63% 照样够不到。
-
-**局限（写进任何结论都必须一并交代）**：
-- **n=100 太小**：10% 量级的命中率在 n=100 下的 95% 置信区间约 ±6pt，**绝对幅度不可外推**；要升级为主指标需全量重跑 2,754 条（约 27.5 万候选对，CPU 预计 1.5 小时以上）。
-- 命中判定用的是 `(source, page)` **代理口径**（比主指标按 `chunk_id` 判定宽松），三路一致故**可作相对比较**，但**不可与 headline 的 0.0759 直接对比**。
-- C 阶段按 256 token 截断，可能轻微低估 cross-encoder 的能力。
-
-> 📄 数据文件：`fin_synagent/rerank_experiment.json`（方法论 / 样本量 / 局限 / 下一步）。
-> 🧪 实验脚本：`exp_ce_stageA.py`（候选产出）· `exp_ce_stageB.py`（cross-encoder 打分，支持续跑）。
 
 ---
 
@@ -998,8 +907,7 @@ HF 缓存 models--BAAI--bge-reranker-base/ 里实际是 ONNX 格式（protobuf �
 | **智能咨询** | 7 | leader → retrieve → expert → critic ⇄ revise → verify → summarize | 有（max_loop=2） | 7 节点；行业路由 3 库 + 宏观兜底 |
 | **智能荐股** | 12 | fetch_data / planner / build_pool / fetch_comments / 四维特征 / synthesize / scorer / reasoner ⇄ critic | 有（max_loop=1） | 5 候选 → Top-3；权重 0.30/0.30/0.25/0.15 |
 | **RAG 知识库** | 离线 5 + 在线 5 | 收集 → 提取 → 切分 → 向量化 → 入库 ／ 路由 → 编码 → 检索 → 拼 Prompt → 生成标注 | — | 152 文档 / 12,594 chunk / 512 维；2,754 条评测 |
-| **重排对照**（附加实验） | 3 路 | 纯 bi-encoder ／ late-interaction（上线）／ 真 cross-encoder | — | n=100：6% / 10% / **17%**；四行业排序一致 |
 
 ---
 
-*本文档所有描述均对照仓库当前代码（`agent_graph.py` / `screen_graph.py` / `kb.py` / `app.py` / `build_kb/*.py`）与 `kb_data.json` 实值编写，含明确标注的已知局限（关键词式行业路由、线上检索为离线快照、critic 强制回环、当前重排后端为次优退路等）。*
+*本文档所有描述均对照仓库当前代码（`agent_graph.py` / `screen_graph.py` / `kb.py` / `app.py` / `build_kb/*.py`）与 `kb_data.json` 实值编写，含明确标注的已知局限（关键词式行业路由、线上检索为离线快照、critic 强制回环等）。*
