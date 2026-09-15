@@ -1540,74 +1540,63 @@ def run_workflow(query: str, decomp_level: int, use_real=None):
 
 
 def _render_consult_lite():
-    """简略版智能咨询：不运行多智能体流水线，仅做简易讲解 + 大白话批注讲解。"""
+    """简略版智能咨询：按用户指定的七步结构讲解 Consult 流水线（不运行）。"""
     st.markdown("""
     <div class="card" style="margin-top:8px;">
-      <h4>💡 简易讲解：智能咨询是干什么的？</h4>
-      <p>你用大白话提问（比如「白酒最近还能不能配？」），系统不会把问题直接丢给一个大模型硬答，而是
-      <b style="color:#1E3A6E;">拉一队 AI 角色开「投资研讨会」</b>：有人把问题拆开、有人去知识库翻资料、有人写分析、
-      有人挑毛病、有人核对真假，最后有人总结。整个过程你都能看见，结论还带出处，所以可以放心追问。</p>
+      <h4>💡 简易讲解：智能咨询（Consult）在做什么？</h4>
+      <p>你用大白话提问，系统拉一队 AI 角色开「投资研讨会」：有人拆解问题、有人翻知识库、有人写分析、有人挑毛病、有人核对真假，最后有人总结并标出来源。整个过程看得见、结论可追溯。</p>
     </div>
     """, unsafe_allow_html=True)
-    st.markdown('<div class="sec-title" style="margin-top:22px;">🔍 大白话批注讲解 · 一次咨询的内部六步</div>'
-                '<div class="sec-sub">每一步用大白话告诉你「这一棒是谁、在干嘛」</div>', unsafe_allow_html=True)
-    _walk = [
-        ("👔 Leader 拆解", "相当于「会议主持人」。先把你的问题拆成几个小任务（如宏观面、估值面、风险面），再分给下面的专家。",
-         "先把大白话的疑问，变成几个能下手的小题目。"),
-        ("📚 RAG 检索", "相当于「资料员」。去行业知识库里翻出最相关的几段原文（带页码），喂给专家当依据。",
-         "先查资料再开口，避免瞎编。"),
-        ("🎓 Expert 作答", "相当于「行业分析师」。基于资料写出结构化分析，分点、加粗结论、给出风险提示。",
-         "正经写一份带数据、可追溯的分析。"),
-        ("🧐 Critic 批评", "相当于「挑刺同事」。自查逻辑漏洞、结论够不够具体、有没有遗漏。",
-         "自己人先找茬，把不靠谱的地方揪出来。"),
-        ("🔎 Verify 求证", "相当于「事实核查员」。把结论和知识库 / 联网数据再对一遍，压住幻觉。",
-         "关键数字和说法，再核一遍真假。"),
-        ("📋 Summary 总结", "相当于「汇报人」。把前面成果汇总成可执行结论，并邀请你继续追问。",
-         "给你一份能直接用、还能接着问的答复。"),
+    st.markdown('<div class="sec-title" style="margin-top:22px;">一、Fin Synagent Consult 任务</div>'
+                '<div class="sec-sub">七步流水线：从你的一句话，到一份带出处的结论</div>', unsafe_allow_html=True)
+    _steps = [
+        ("1. 用户输入", "你用自然语言提出投资疑问（如「白酒最近还能不能配？」）。"),
+        ("2. Leader Agent：拆解、分配任务", "相当于「会议主持人」，把大问题拆成几个小任务（宏观面 / 估值面 / 风险面）并分派给专家。"),
+        ("3. RAG", "去行业知识库里翻出最相关的几段原文（带页码），作为后续作答的依据。"),
+        ("4. Expert Agent：专家作答", "搭建白酒、贵金属、红利行业知识库；采用 RAG 检索，基于资料写出结构化分析。"),
+        ("5. Critic Agent：寻找可疑数据、结论", "采用 qstock 库获取行业背景、企业财报，寻找可疑数据与结论。"),
+        ("6. Verify Agent：事实校验", "把输出内容与网络检索数据以及知识库数据进行比对，抑制模型幻觉。"),
+        ("7. Summary Agent：得出结论", "汇总前面成果，给出可执行结论并邀请你继续追问。"),
     ]
-    for role, what, plain in _walk:
+    for title, body in _steps:
         st.markdown(
             f'<div class="step" style="border-left-color:#4A6FD4;">'
-            f'<b>{role}</b><br>'
-            f'<span style="color:#44506A;font-size:.9rem;">{what}</span><br>'
-            f'<span style="color:#1E7A4D;font-size:.85rem;font-weight:600;">🗣 大白话：{plain}</span>'
+            f'<b>{title}</b><br>'
+            f'<span style="color:#44506A;font-size:.92rem;">{body}</span>'
             f'</div>', unsafe_allow_html=True)
     st.info("💡 切到「标准版」可输入问题，实时观看多智能体流水线逐步跑通（演示模式内置示例，无需配置 Key）。")
 
 
 def _render_screen_lite():
-    """简略版智能荐股：不运行筛选树，仅做简易讲解 + 大白话批注讲解。"""
+    """简略版智能荐股：按用户指定的三层结构讲解 Screen（不运行）。"""
     st.markdown("""
     <div class="card" style="margin-top:8px;">
-      <h4>💡 简易讲解：智能荐股是干什么的？</h4>
-      <p>你选好「行业」和「风险偏好」，系统就像 <b style="color:#1E3A6E;">一个基金经理团队</b>：
-      先用四个维度给股票打分（基本面 / 技术面 / 情绪面 / 行业面），再按分数排序，挑出最合适的前几只，
-      并附上推荐理由和风险提示。</p>
+      <h4>💡 简易讲解：智能荐股（Screen）在做什么？</h4>
+      <p>你选好「行业」和「风险偏好」，系统像一个基金经理团队：先抓数据，再从四个维度给股票做「体检」，最后汇总打分、挑出最合适的前几只并附推荐理由与风险提示。</p>
     </div>
     """, unsafe_allow_html=True)
-    st.markdown('<div class="sec-title" style="margin-top:22px;">🔍 大白话批注讲解 · 一次荐股的内部六步</div>'
-                '<div class="sec-sub">每一步用大白话告诉你「这一步在干嘛」</div>', unsafe_allow_html=True)
-    _walk = [
-        ("🧭 意图解析", "把你选的行业 + 风险偏好，变成结构化的筛选条件（如「保守 → 要稳定收益」）。",
-         "先弄明白你到底想要什么样的股票。"),
-        ("🏗️ 股票池构建", "按行业过滤 + 基础门槛（市值>500亿、非 ST），筛出 5 支候选。",
-         "先圈定一个「候选小圈子」，别在全市场瞎找。"),
-        ("🧬 四维特征提取", "对每支候选算四个维度：基本面 / 技术面 / 情绪面（股吧情绪）/ 行业面。",
-         "从四个角度给每只股票做「体检」。"),
-        ("⚖️ LLM 评分", "用资深分析师视角给每只打 0-100 分（如茅台 91.2、五粮液 86.7）。",
-         "综合体检结果，给个总分排名。"),
-        ("🏆 Top-3 推荐", "挑分数最高的几只，给出推荐理由 + 分析师观点。",
-         "公布「买什么、为什么」。"),
-        ("⚠️ 风险提示", "附风险提示，并声明数据为模拟、不构成投资建议。",
-         "最后提醒一句「投资有风险」。"),
-    ]
-    for role, what, plain in _walk:
-        st.markdown(
-            f'<div class="step" style="border-left-color:#C9A227;">'
-            f'<b>{role}</b><br>'
-            f'<span style="color:#44506A;font-size:.9rem;">{what}</span><br>'
-            f'<span style="color:#1E7A4D;font-size:.85rem;font-weight:600;">🗣 大白话：{plain}</span>'
-            f'</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec-title" style="margin-top:22px;">二、Fin Synagent Screen 任务</div>'
+                '<div class="sec-sub">三层结构：数据获取 → 四维特征 → 汇聚决策</div>', unsafe_allow_html=True)
+
+    def _step(title, color="#4A6FD4", indent=0):
+        _ml = f"margin-left:{indent}px;" if indent else ""
+        return f'<div class="step" style="border-left-color:{color};{_ml}"><b>{title}</b></div>'
+
+    st.markdown(_step("1. 用户输入"), unsafe_allow_html=True)
+    st.caption("　你选择目标行业与风险偏好（保守 / 平衡 / 进取）。")
+
+    st.markdown(_step("2. 数据获取层"), unsafe_allow_html=True)
+    for t in ["（1）实时行情获取", "（2）意图解析", "（3）股票池构建", "（4）个股评论抓取"]:
+        st.markdown(_step(t, color="#B9C6E6", indent=16), unsafe_allow_html=True)
+
+    st.markdown(_step("3. 四维特征层"), unsafe_allow_html=True)
+    for t in ["（1）基本面特征", "（2）技术面特征", "（3）情绪面特征", "（4）行业面特征"]:
+        st.markdown(_step(t, color="#B9C6E6", indent=16), unsafe_allow_html=True)
+
+    st.markdown(_step("4. 汇聚决策层"), unsafe_allow_html=True)
+    for t in ["（1）四维特征汇聚", "（2）LLM 综合评分", "（3）分析师观点与推荐理由", "（4）校验与反思"]:
+        st.markdown(_step(t, color="#B9C6E6", indent=16), unsafe_allow_html=True)
+
     st.info("💡 切到「标准版」可选择行业与风险偏好，实时运行筛选树（演示模式内置示例行情，无需配置 Key）。")
 
 
@@ -3228,6 +3217,14 @@ INTERVIEW_TECH_RAG = [
      "Top-K 召回里混进不相关片段（噪声）会干扰生成、甚至被模型当成事实引用，称为上下文污染。\n\n**缓解手段**：① 提高切分质量（本项目语义切分 + 中文占比≥45% 过滤，12594 高质量 chunk）；② 重排（Reranker）精筛；③ 按行业路由到对应 collection 缩小域；④ 提示词约束「仅依据高相似度片段作答、无依据时说明未知」。本项目 Consult 检索即先路由到单库、再 Top-100 余弦召回并重排取 Top-5。"),
     ("向量数据库除了 Chroma 还有哪些？如何选型？",
      "主流还有 **FAISS**（Meta，高性能内存索引）、**Milvus / Zilliz**（分布式、大规模）、**Qdrant / Weaviate**（带 metadata 过滤与混合检索）、**pgvector**（PostgreSQL 插件，便于与业务库同栈）。\n\n**选型看规模**：原型/单机演示用 Chroma 最轻；亿级向量、需高并发与多租户选 Milvus；已有 PG 栈选 pgvector。本项目 Demo 用 Chroma 已足够，且无外部依赖、可随包部署。"),
+    ("怎么判断 RAG 检索好不好？用什么指标？",
+     "分两层看：**检索层**用标准 IR 指标——Recall@5（前 5 条里有没有正确答案）、Precision@5、MRR（正确答案排第几）、NDCG@5（排序质量），外加「来源覆盖」看是否只依赖单一信源；**生成层**用 RAGAS 三件套——忠实度（有没有瞎编）、答案相关性（切题吗）、上下文利用率（真用上检索资料没）。我们项目 Recall@5≈96.3%、生成三项 0.87~0.90，且评测集由真实 chunk 反向生成、与 BEIR/RAGAS 同源，数字可复现。", True),
+    ("为什么用「chunk 反向生成」自建 benchmark，而不是手写测试题？",
+     "手写测试集容易被「出题人偏见」污染——挑自己擅长的问题、答案凑得出来就显高。反向生成法是：从知识库真实 chunk 抽一段→反推能引出它的查询，该 chunk 的来源主体即标准答案（qrels），**零人工标注**且与 BEIR/MS MARCO/RAGAS 同源。2,754 条查询覆盖四个行业，gold 出处可在页面逐条核对，评测因此「不可作弊」。", True),
+    ("你的检索 Recall 不是 100%，宏观行业最低（0.866），怎么看？",
+     "宏观 Recall 最低但**精确命中率反而最高**——说明不是检索器差，而是「同质内容互相挤占」：宏观政策类段落高度相似，Top-5 常装满同主题段，挤掉了少数异质黄金段。优化方向是提覆盖率（更强 embedding / 查询改写 / 更细切分），而非调排序。这恰好说明「看指标要结合业务解读，不能只看一个数字」。", True),
+    ("RAG 怎么防止大模型编造（幻觉）？",
+     "三层闸：① **约束式 Prompt**——强制「仅依据参考资料作答、每条结论标注来源 PDF+页码」；② **可溯源**——答案后回写 [来源：XXX.pdf pNN]，用户能核对；③ **Verify Agent**——Consult 流程再让一个 agent 把答案与知识库/联网数据二次比对，压低幻觉。指标上由「忠实度(Faithfulness)」独立度量，我们项目≈0.90。", True),
 ]
 
 INTERVIEW_TECH_FT = [
@@ -3334,22 +3331,6 @@ def page_interview():
     if is_lite:
         _total = sum(len(g[1]) for g in tech_groups)
         st.caption(f"简略版仅展示标星（⭐）高频技术题；完整 {_total} 题技术问答请切换到「标准版」。")
-
-    # 第三部分 · RAG 专项深挖（围绕本项目真实经历，强化 RAG 面试题储备）
-    with st.expander("第三部分 · RAG 专项深挖（检索 / 知识库 / 评测 · 点击展开/收起）", expanded=(not is_lite)):
-        _rag_deep = [
-            ("怎么判断 RAG 检索好不好？用什么指标？",
-             "分两层看：**检索层**用标准 IR 指标——Recall@5（前 5 条里有没有正确答案）、Precision@5、MRR（正确答案排第几）、NDCG@5（排序质量），外加「来源覆盖」看是否只依赖单一信源；**生成层**用 RAGAS 三件套——忠实度（有没有瞎编）、答案相关性（切题吗）、上下文利用率（真用上检索资料没）。我们项目 Recall@5≈96.3%、生成三项 0.87~0.90，且评测集由真实 chunk 反向生成、与 BEIR/RAGAS 同源，数字可复现。"),
-            ("为什么用「chunk 反向生成」自建 benchmark，而不是手写测试题？",
-             "手写测试集容易被「出题人偏见」污染——挑自己擅长的问题、答案凑得出来就显高。反向生成法是：从知识库真实 chunk 抽一段→反推能引出它的查询，该 chunk 的来源主体即标准答案（qrels），**零人工标注**且与 BEIR/MS MARCO/RAGAS 同源。2,754 条查询覆盖四个行业，gold 出处可在页面逐条核对，评测因此「不可作弊」。"),
-            ("你的检索 Recall 不是 100%，宏观行业最低（0.866），怎么看？",
-             "宏观 Recall 最低但**精确命中率反而最高**——说明不是检索器差，而是「同质内容互相挤占」：宏观政策类段落高度相似，Top-5 常装满同主题段，挤掉了少数异质黄金段。优化方向是提覆盖率（更强 embedding / 查询改写 / 更细切分），而非调排序。这恰好说明「看指标要结合业务解读，不能只看一个数字」。"),
-            ("RAG 怎么防止大模型编造（幻觉）？",
-             "三层闸：① **约束式 Prompt**——强制「仅依据参考资料作答、每条结论标注来源 PDF+页码」；② **可溯源**——答案后回写 [来源：XXX.pdf pNN]，用户能核对；③ **Verify Agent**——Consult 流程再让一个 agent 把答案与知识库/联网数据二次比对，压低幻觉。指标上由「忠实度(Faithfulness)」独立度量，我们项目≈0.90。"),
-        ]
-        for q, a in _rag_deep:
-            with st.expander(f"**{q}**"):
-                st.markdown(a)
 
 # ============================================================== 页面：RAG 知识库
 def _n(x):
@@ -3969,16 +3950,6 @@ def page_glossary():
       <p>{gl.get("intro", "")}</p>
     </div>''', unsafe_allow_html=True)
 
-    # —— Benchmark 速览（标准版 / 简略版均展示）——
-    st.markdown('<div class="sec-title" style="margin-top:18px;">📐 什么是 Benchmark（基准测试）· 本项目自建评测集</div>', unsafe_allow_html=True)
-    st.markdown('''
-    <div class="card" style="margin-top:6px;">
-      <p><b>Benchmark（基准测试）</b>：用一份<strong>固定、公开、人人可复现</strong>的测试集去考一个 AI 系统，得出的分数能在不同系统间横向比较——就像用同一张高考试卷比谁分高。RAG 领域公认的 benchmark 有
-      <b>BEIR</b>（跨任务检索）、<b>MS MARCO</b>（问答排序）、<b>RAGAS</b>（生成质量）。</p>
-      <p style="margin-bottom:0;">本项目<strong>不手写测试题</strong>，而用「<b>chunk 反向生成</b>」法自建 benchmark：从真实知识库随机抽一段原文（chunk），反推「能引出这段原文的问题」当作查询；该 chunk 的来源主体（公司 / 政策）即标准答案（qrels）。共 <b>2,754 条查询</b>，与 BEIR / MS MARCO / RAGAS 同源、<strong>零人工标注</strong>，且查询长什么样、黄金出处是哪份文件哪一节都可在页面逐条核对。</p>
-    </div>
-    ''', unsafe_allow_html=True)
-
     cats = gl.get("categories", [])
     total = sum(len(c.get("terms", [])) for c in cats)
     n_star = sum(1 for c in cats for t in c.get("terms", []) if _is_core(t))
@@ -4019,6 +3990,44 @@ def page_glossary():
                 f'</div>' for t in terms)
             st.markdown(f'<div class="gloss-grid">{rows}</div>', unsafe_allow_html=True)
     st.caption("⭐ 标注的为最基础、最重要的核心术语；术语定义面向演示与教学场景，实际投顾落地时请以监管口径与业务规范为准。")
+
+# ============================================================== 页面：项目痛点
+def page_painpoints():
+    st.markdown("""
+    <div class="hero hero-mini">
+      <div class="kicker">Why This Project · Pain Points</div>
+      <h1 style="font-size:2rem;">🩹 这个项目到底在解决什么问题？</h1>
+      <div class="sub" style="margin-bottom:0;">直击通用大模型做金融投顾时的四大痛点，并用「多智能体 + RAG」逐一破解</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown('<div class="sec-title" style="margin-top:18px;">一、这个项目到底在解决什么问题？</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec-sub">1. 四个痛点 —— 通用大模型「直接回答」时没人敢用，我们用一套机制逐一化解</div>', unsafe_allow_html=True)
+
+    _pains = [
+        ("（1）黑箱",
+         "你问 AI「某某股票能不能买」，它直接给你一段话，你不知道它是真查了还是瞎编的。",
+         "设立多 Agent 完整推理链条，推理过程清晰可见。"),
+        ("（2）幻觉",
+         "大模型有时候「一本正经地胡说」（行业叫幻觉），引用错误的数据。",
+         "采用 RAG 知识库检索上传本地文件，Verify Agent 验证数据真实性，Critic Agent 修改数据。"),
+        ("（3）信源不透明",
+         "大模型引用的数据没有来源，你用结论的时候没有安全感。",
+         "思考过程、数据都加上获取的来源（PDF 名称 + 页码）。"),
+        ("（4）数据滞后，无法获取本地数据",
+         "Agent 采用的数据有时候无法获取最新 / 本地的数据。",
+         "利用 RAG 知识库搭建本地、最新的知识库。"),
+    ]
+    for title, problem, solution in _pains:
+        st.markdown(f'''
+        <div class="card" style="margin-top:10px;">
+          <div style="font-weight:800;font-size:1.05rem;color:#9A6B00;">{title}</div>
+          <div style="margin-top:6px;color:#44506A;line-height:1.7;">{problem}</div>
+          <div style="margin-top:8px;background:#EAF6EE;border-left:3px solid #1E9E6A;border-radius:6px;padding:8px 10px;color:#1E5638;font-size:.9rem;">
+            <b>✅ 解决：</b>{solution}
+          </div>
+        </div>
+        ''', unsafe_allow_html=True)
 
 # ============================================================== 页面：星火大模型
 def page_spark():
@@ -4068,12 +4077,12 @@ def page_rag_kb():
 
 # 导航（单一菜单，按受众顺序平铺：产品体验 → 技术底座 → 附录参考）
 NAV_PAGES = [
-    "首页", "智能咨询", "智能荐股",
+    "首页", "痛点", "智能咨询", "智能荐股",
     "星火大模型", "测试评估", "RAG 知识库", "技能中心", "技术设计",
     "专有名词解释", "面试建议",
 ]
 NAV_ICONS = [
-    "house-door", "chat-square-text", "graph-up-arrow",
+    "house-door", "exclamation-triangle", "chat-square-text", "graph-up-arrow",
     "fire", "bar-chart", "book", "puzzle", "cpu",
     "book", "chat-dots",
 ]
@@ -4111,6 +4120,7 @@ def _select_nav(page):
 
 PAGES = {
     "首页": page_home,
+    "痛点": page_painpoints,
     "智能咨询": page_consult,
     "智能荐股": page_screen,
     "星火大模型": page_spark,
