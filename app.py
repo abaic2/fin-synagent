@@ -1611,6 +1611,42 @@ def _render_screen_lite():
     st.info("💡 切到「标准版」可选择行业与风险偏好，实时运行筛选树（演示模式内置示例行情，无需配置 Key）。")
 
 
+def _render_rag_kb_lite():
+    """简略版 RAG 知识库：在规模/指标之上，先给一段大白话讲解，不堆术语。"""
+    st.markdown("""
+    <div class="card" style="margin-top:8px;">
+      <h4>💡 简易讲解：RAG 知识库是干什么的？</h4>
+      <p>大模型本身「记性有限、还爱瞎编」。RAG 就是给 AI 建了一座 <b style="color:#1E3A6E;">带索引的私人图书馆</b>：
+      先把权威研报、公告 PDF 拆成小段、变成向量存进数据库；你提问时，系统先把问题也变成向量，去图书馆里找出最像的几段原文，
+      再把原文喂给大模型，让它「看着资料回答」。这样回答既有出处、又能追到页码，还不容易胡说。</p>
+    </div>
+    """, unsafe_allow_html=True)
+    st.markdown('<div class="sec-title" style="margin-top:22px;">🔍 大白话批注讲解 · 知识库是怎么搭起来的</div>'
+                '<div class="sec-sub">从一堆 PDF 到「能回答你问题的图书馆」，一共六步</div>', unsafe_allow_html=True)
+    _walk = [
+        ("📥 收资料", "把白酒 / 红利 / 贵金属 / 宏观四个行业的权威 PDF（年报、公告、央行报告）收集齐。",
+         "先确定「图书馆里要放哪些书」。"),
+        ("✂️ 切小段", "用语义切分把每篇长文档切成 300–800 字的小块（chunk），一块讲一件事。",
+         "书太厚翻不动，先裁成一页页的便签。"),
+        ("🔢 转向量", "用 bge 中文模型把每块文字变成一串 512 维数字（向量），意思越近的数字越像。",
+         "给每段便签贴一个「含义指纹」，方便按意思找。"),
+        ("🗄️ 入库", "把向量存进 Chroma，按四个行业分四个独立「书架」（collection）。",
+         "便签按行业上架，找的时候只在本行业书架翻。"),
+        ("❓ 问也转向量", "你提问时，用同一个 bge 模型把问题也变成向量。",
+         "你的问题也生成「含义指纹」，好去和便签比对。"),
+        ("🔎 找片段 + 作答", "算问题与每块向量的余弦相似度，取最像的 Top-5 段原文，连同问题一起交给大模型作答。",
+         "找最贴合的便签，摊在大模型面前让它照着答。"),
+    ]
+    for role, what, plain in _walk:
+        st.markdown(
+            f'<div class="step" style="border-left-color:#C9A227;">'
+            f'<b>{role}</b><br>'
+            f'<span style="color:#44506A;font-size:.9rem;">{what}</span><br>'
+            f'<span style="color:#1E7A4D;font-size:.85rem;font-weight:600;">🗣 大白话：{plain}</span>'
+            f'</div>', unsafe_allow_html=True)
+    st.info("💡 切到「标准版」可查看完整建库规模、检索样本浏览器与 RAG 评价指标（相似度与来源均为真实召回值）。")
+
+
 def page_consult():
     st.markdown("""
     <div class="hero hero-mini">
@@ -3965,6 +4001,8 @@ def page_rag_kb():
       <div class="sub" style="margin-bottom:0;">真实建库规模、检索样本浏览器、RAG 评价指标与离在线全流程</div>
     </div>
     """, unsafe_allow_html=True)
+    if st.session_state.get("mode") == "lite":
+        _render_rag_kb_lite()
     render_kb()
 
 # 导航（单一菜单，按受众顺序平铺：产品体验 → 技术底座 → 附录参考）
@@ -3980,7 +4018,8 @@ NAV_ICONS = [
 ]
 
 # 简略版页面集合从标准版派生：只维护一个排除名单，新增页面只改 NAV_PAGES / NAV_ICONS 一处
-EXCLUDE_IN_LITE = ["星火大模型", "技术设计"]
+# 简略版只保留「核心体验 + 附录」：去掉首页、技术类（星火/技术设计）、技能中心、测试评估
+EXCLUDE_IN_LITE = ["首页", "星火大模型", "技术设计", "技能中心", "测试评估"]
 NAV_PAGES_LITE = [p for p in NAV_PAGES if p not in EXCLUDE_IN_LITE]
 NAV_ICONS_LITE = [NAV_ICONS[NAV_PAGES.index(p)] for p in NAV_PAGES_LITE]
 
