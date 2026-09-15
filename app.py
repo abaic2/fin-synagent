@@ -4006,7 +4006,7 @@ CORE_TERMS = {
     "检索（Retrieval）", "Chunk（文本切块）", "Chroma", "BGE 嵌入模型",
     "余弦相似度（Cosine Similarity）", "Top-K", "微调（Fine-tuning）",
     "情感分析（Sentiment Analysis）", "大模型（LLM）", "智能体 / Agent",
-    "提示词（Prompt）", "幻觉（Hallucination）", "AI as Judge", "三层评测体系",
+    "提示词（Prompt）", "幻觉（Hallucination）", "AI as Judge",
 }
 
 def _is_core(t):
