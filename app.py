@@ -3499,14 +3499,11 @@ def render_kb():
         for col, (v, k) in zip(st.columns(len(real_row2)), real_row2):
             with col:
                 st.markdown(f'<div class="kpi"><div class="v">{v}</div><div class="k">{k}</div></div>', unsafe_allow_html=True)
-        st.caption(f"评测口径与 BEIR / MS MARCO / RAGAS 同源：从真实知识库 chunk 反向生成 {eval_overall.get('n_queries',0)} 条查询（查询即由语料自身生成，非人工挑选），用 BAAI/bge-small-zh-v1.5 编码后在所属行业 collection 内做余弦 Top-5 召回。"
-                   f"相关性以「Top-K 是否命中 gold 主体（公司/政策主题）上下文」判定（RAGAS 式 entity/document-level context recall）；NDCG 采用分级相关性（精确命中源 chunk=2、同主体其他 chunk=1）。"
-                   f"覆盖/相似度为应用启动实时统计。")
         # 🗣 大白话：检索指标在回答「资料翻得对不对」
         st.info(
             "🗣 **大白话：上面这些「检索指标」回答的是——资料翻得对不对**\n\n"
             "- ⭐ **Recall@5 召回率〔重点指标〕**：前 5 条里有没有正确答案（≈96% 表示十次有九次半能翻到）——**检索最核心的指标，衡量「该找的找没找到」**\n"
-            "- **Precision@5 精确率**：翻出来的 5 条里有几条真相关——衡量「找来的东西纯不纯」\n"
+            "- ⭐ **Precision@5 精确率〔重点指标〕**：翻出来的 5 条里有几条真相关——衡量「找来的东西纯不纯」\n"
             "- **MRR 平均倒数排名**：正确答案排第几（越靠前越好）——衡量「好答案是不是排在最上面」\n"
             "- **NDCG@5**：在前几名基础上还看排序质量——越靠前的正确答案权重越高\n"
             "- **来源覆盖**：平均每条答案用到了几个不同文件，越高说明不依赖单一信源\n\n"
@@ -3540,7 +3537,7 @@ def render_kb():
             st.info(
                 "🗣 **大白话：这些「生成指标」回答的是——答案靠不靠谱**\n\n"
                 "- ⭐ **Faithfulness 忠实度〔重点指标〕**：有没有瞎编（答案是否全基于资料）——**RAG 防幻觉的第一道防线**\n"
-                "- **Answer Relevance 答案相关性**：有没有答到点上——别答非所问\n"
+                "- ⭐ **Answer Relevance 答案相关性〔重点指标〕**：有没有答到点上——别答非所问\n"
                 "- **Context Utilization 上下文利用率**：有没有真用上检索到的资料——别「找了不用」\n\n"
                 "三项都 0~1，越高越好。即便检索召回强（Recall@5≈96%），生成端仍须独立验证「不编造、切题、引用资料」。与标准版 RAGAS 三件套口径一致。"
             )
