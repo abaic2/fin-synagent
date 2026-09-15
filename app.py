@@ -1539,6 +1539,78 @@ def run_workflow(query: str, decomp_level: int, use_real=None):
         return _run_workflow_inline(query, decomp_level, use_real)
 
 
+def _render_consult_lite():
+    """简略版智能咨询：不运行多智能体流水线，仅做简易讲解 + 大白话批注讲解。"""
+    st.markdown("""
+    <div class="card" style="margin-top:8px;">
+      <h4>💡 简易讲解：智能咨询是干什么的？</h4>
+      <p>你用大白话提问（比如「白酒最近还能不能配？」），系统不会把问题直接丢给一个大模型硬答，而是
+      <b style="color:#1E3A6E;">拉一队 AI 角色开「投资研讨会」</b>：有人把问题拆开、有人去知识库翻资料、有人写分析、
+      有人挑毛病、有人核对真假，最后有人总结。整个过程你都能看见，结论还带出处，所以可以放心追问。</p>
+    </div>
+    """, unsafe_allow_html=True)
+    st.markdown('<div class="sec-title" style="margin-top:22px;">🔍 大白话批注讲解 · 一次咨询的内部六步</div>'
+                '<div class="sec-sub">每一步用大白话告诉你「这一棒是谁、在干嘛」</div>', unsafe_allow_html=True)
+    _walk = [
+        ("👔 Leader 拆解", "相当于「会议主持人」。先把你的问题拆成几个小任务（如宏观面、估值面、风险面），再分给下面的专家。",
+         "先把大白话的疑问，变成几个能下手的小题目。"),
+        ("📚 RAG 检索", "相当于「资料员」。去行业知识库里翻出最相关的几段原文（带页码），喂给专家当依据。",
+         "先查资料再开口，避免瞎编。"),
+        ("🎓 Expert 作答", "相当于「行业分析师」。基于资料写出结构化分析，分点、加粗结论、给出风险提示。",
+         "正经写一份带数据、可追溯的分析。"),
+        ("🧐 Critic 批评", "相当于「挑刺同事」。自查逻辑漏洞、结论够不够具体、有没有遗漏。",
+         "自己人先找茬，把不靠谱的地方揪出来。"),
+        ("🔎 Verify 求证", "相当于「事实核查员」。把结论和知识库 / 联网数据再对一遍，压住幻觉。",
+         "关键数字和说法，再核一遍真假。"),
+        ("📋 Summary 总结", "相当于「汇报人」。把前面成果汇总成可执行结论，并邀请你继续追问。",
+         "给你一份能直接用、还能接着问的答复。"),
+    ]
+    for role, what, plain in _walk:
+        st.markdown(
+            f'<div class="step" style="border-left-color:#4A6FD4;">'
+            f'<b>{role}</b><br>'
+            f'<span style="color:#44506A;font-size:.9rem;">{what}</span><br>'
+            f'<span style="color:#1E7A4D;font-size:.85rem;font-weight:600;">🗣 大白话：{plain}</span>'
+            f'</div>', unsafe_allow_html=True)
+    st.info("💡 切到「标准版」可输入问题，实时观看多智能体流水线逐步跑通（演示模式内置示例，无需配置 Key）。")
+
+
+def _render_screen_lite():
+    """简略版智能荐股：不运行筛选树，仅做简易讲解 + 大白话批注讲解。"""
+    st.markdown("""
+    <div class="card" style="margin-top:8px;">
+      <h4>💡 简易讲解：智能荐股是干什么的？</h4>
+      <p>你选好「行业」和「风险偏好」，系统就像 <b style="color:#1E3A6E;">一个基金经理团队</b>：
+      先用四个维度给股票打分（基本面 / 技术面 / 情绪面 / 行业面），再按分数排序，挑出最合适的前几只，
+      并附上推荐理由和风险提示。</p>
+    </div>
+    """, unsafe_allow_html=True)
+    st.markdown('<div class="sec-title" style="margin-top:22px;">🔍 大白话批注讲解 · 一次荐股的内部六步</div>'
+                '<div class="sec-sub">每一步用大白话告诉你「这一步在干嘛」</div>', unsafe_allow_html=True)
+    _walk = [
+        ("🧭 意图解析", "把你选的行业 + 风险偏好，变成结构化的筛选条件（如「保守 → 要稳定收益」）。",
+         "先弄明白你到底想要什么样的股票。"),
+        ("🏗️ 股票池构建", "按行业过滤 + 基础门槛（市值>500亿、非 ST），筛出 5 支候选。",
+         "先圈定一个「候选小圈子」，别在全市场瞎找。"),
+        ("🧬 四维特征提取", "对每支候选算四个维度：基本面 / 技术面 / 情绪面（股吧情绪）/ 行业面。",
+         "从四个角度给每只股票做「体检」。"),
+        ("⚖️ LLM 评分", "用资深分析师视角给每只打 0-100 分（如茅台 91.2、五粮液 86.7）。",
+         "综合体检结果，给个总分排名。"),
+        ("🏆 Top-3 推荐", "挑分数最高的几只，给出推荐理由 + 分析师观点。",
+         "公布「买什么、为什么」。"),
+        ("⚠️ 风险提示", "附风险提示，并声明数据为模拟、不构成投资建议。",
+         "最后提醒一句「投资有风险」。"),
+    ]
+    for role, what, plain in _walk:
+        st.markdown(
+            f'<div class="step" style="border-left-color:#C9A227;">'
+            f'<b>{role}</b><br>'
+            f'<span style="color:#44506A;font-size:.9rem;">{what}</span><br>'
+            f'<span style="color:#1E7A4D;font-size:.85rem;font-weight:600;">🗣 大白话：{plain}</span>'
+            f'</div>', unsafe_allow_html=True)
+    st.info("💡 切到「标准版」可选择行业与风险偏好，实时运行筛选树（演示模式内置示例行情，无需配置 Key）。")
+
+
 def page_consult():
     st.markdown("""
     <div class="hero hero-mini">
@@ -1547,6 +1619,11 @@ def page_consult():
       <div class="sub" style="margin-bottom:0;">System-2 深思熟虑 · LangGraph 状态图编排 Multi-Agent · 批评—修订回环 · 知识库求证 · 显式思维链</div>
     </div>
     """, unsafe_allow_html=True)
+
+    is_lite = st.session_state.get("mode") == "lite"
+    if is_lite:
+        _render_consult_lite()
+        return
 
     # ── 姓名闸门：未解锁则隐藏 API Key、强制演示模式 ──
     _unlocked = render_access_gate()
@@ -2340,6 +2417,11 @@ def page_screen():
     </div>
     """, unsafe_allow_html=True)
 
+    is_lite = st.session_state.get("mode") == "lite"
+    if is_lite:
+        _render_screen_lite()
+        return
+
     # ── 姓名闸门：未解锁则隐藏 API Key、强制演示模式 ──
     _unlocked = render_access_gate()
 
@@ -2844,6 +2926,15 @@ eval_data     = "FinEval"         # 金融多选一评测（34 科目）''', lan
 
 
 # ============================================================== 页面：评估测试
+# 消融实验数据（唯一真值源）：简略版与标准版共用同一份，避免两处手写数字漂移
+ABLATION_ROWS = [
+    {"配置": "完整 Fin Synagent", "Judge 得分(满分30)": "28.41", "得分变化": "基线", "主要退化表现": "—"},
+    {"配置": "− 微调组件", "Judge 得分(满分30)": "27.10", "得分变化": "−1.31", "主要退化表现": "行业关键词抓取变弱，建议贴合度下降"},
+    {"配置": "− 工作流(直连星火)", "Judge 得分(满分30)": "25.30", "得分变化": "−3.11", "主要退化表现": "全面性与深度下降，信息零散、缺分工"},
+    {"配置": "− RAG 知识库", "Judge 得分(满分30)": "26.80", "得分变化": "−1.61", "主要退化表现": "事实性下降，偶发幻觉与口径偏差"},
+]
+
+
 def render_eval():
     is_lite = st.session_state.get("mode") == "lite"
     # 评估框架总览
@@ -2876,13 +2967,7 @@ def render_eval():
         </div>
         """, unsafe_allow_html=True)
         st.markdown('<div class="sec-title" style="margin-top:24px;">③ 人工评估 + ④ 消融实验（关键结论）</div><div class="sec-sub">消融实验在相同 17 条 Query、固定随机种子下，仅移除单一组件，量化各模块对 Judge 得分（满分 30）的贡献</div>', unsafe_allow_html=True)
-        abl = [
-            {"配置": "完整 Fin Synagent", "Judge 得分(满分30)": "28.41", "得分变化": "基线", "主要退化表现": "—"},
-            {"配置": "− 微调组件", "Judge 得分(满分30)": "27.10", "得分变化": "−1.31", "主要退化表现": "行业关键词抓取变弱，建议贴合度下降"},
-            {"配置": "− 工作流(直连星火)", "Judge 得分(满分30)": "25.30", "得分变化": "−3.11", "主要退化表现": "全面性与深度下降，信息零散、缺分工"},
-            {"配置": "− RAG 知识库", "Judge 得分(满分30)": "26.80", "得分变化": "−1.61", "主要退化表现": "事实性下降，偶发幻觉与口径偏差"},
-        ]
-        st.dataframe(pd.DataFrame(abl), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(ABLATION_ROWS), use_container_width=True, hide_index=True)
         st.caption("消融表明：工作流分工作为最大增益项（−3.11），其次为 RAG（−1.61）与微调（−1.31）；三者叠加构成 Fin Synagent 相对通用大模型的核心优势。简略版仅展示关键结论，完整图表与逐组件对比请切换到「标准版」。数值为演示用模拟评测结果。")
         return
 
@@ -2924,12 +3009,7 @@ def render_eval():
         """, unsafe_allow_html=True)
     with c2:
         st.markdown('<div class="sec-title" style="font-size:1rem;margin:0 0 8px;">各组件消融后的 Judge 得分变化</div>', unsafe_allow_html=True)
-        abl = [
-            {"配置": "完整 Fin Synagent", "Judge 得分(满分30)": "28.41", "得分变化": "基线", "主要退化表现": "—"},
-            {"配置": "− 微调组件", "Judge 得分(满分30)": "27.10", "得分变化": "−1.31", "主要退化表现": "行业关键词抓取变弱，建议贴合度下降"},
-            {"配置": "− 工作流(直连星火)", "Judge 得分(满分30)": "25.30", "得分变化": "−3.11", "主要退化表现": "全面性与深度下降，信息零散、缺分工"},
-            {"配置": "− RAG 知识库", "Judge 得分(满分30)": "26.80", "得分变化": "−1.61", "主要退化表现": "事实性下降，偶发幻觉与口径偏差"},
-        ]
+        abl = ABLATION_ROWS
         st.dataframe(pd.DataFrame(abl), use_container_width=True, hide_index=True)
         st.caption("消融表明：工作流分工作为最大增益项（−3.11），其次为 RAG（−1.61）与微调（−1.31）；三者叠加构成 Fin Synagent 相对通用大模型的核心优势。数值为演示用模拟评测结果。")
 
@@ -3899,11 +3979,10 @@ NAV_ICONS = [
     "book", "chat-dots",
 ]
 
-# 简略版（精简模式）：核心页 + 技术/附录页（这些页在简略版下只渲染关键部分）
-NAV_PAGES_LITE = ["首页", "智能咨询", "智能荐股", "技能中心",
-                  "测试评估", "RAG 知识库", "专有名词解释", "面试建议"]
-NAV_ICONS_LITE = ["house-door", "chat-square-text", "graph-up-arrow", "puzzle",
-                  "bar-chart", "book", "card-text", "chat-dots"]
+# 简略版页面集合从标准版派生：只维护一个排除名单，新增页面只改 NAV_PAGES / NAV_ICONS 一处
+EXCLUDE_IN_LITE = ["星火大模型", "技术设计"]
+NAV_PAGES_LITE = [p for p in NAV_PAGES if p not in EXCLUDE_IN_LITE]
+NAV_ICONS_LITE = [NAV_ICONS[NAV_PAGES.index(p)] for p in NAV_PAGES_LITE]
 
 def _on_nav_change(key):
     """单一导航菜单被点击时触发：把当前选中页写入全局 nav 并刷新。"""
