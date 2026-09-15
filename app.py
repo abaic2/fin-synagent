@@ -3335,6 +3335,22 @@ def page_interview():
         _total = sum(len(g[1]) for g in tech_groups)
         st.caption(f"简略版仅展示标星（⭐）高频技术题；完整 {_total} 题技术问答请切换到「标准版」。")
 
+    # 第三部分 · RAG 专项深挖（围绕本项目真实经历，强化 RAG 面试题储备）
+    with st.expander("第三部分 · RAG 专项深挖（检索 / 知识库 / 评测 · 点击展开/收起）", expanded=(not is_lite)):
+        _rag_deep = [
+            ("怎么判断 RAG 检索好不好？用什么指标？",
+             "分两层看：**检索层**用标准 IR 指标——Recall@5（前 5 条里有没有正确答案）、Precision@5、MRR（正确答案排第几）、NDCG@5（排序质量），外加「来源覆盖」看是否只依赖单一信源；**生成层**用 RAGAS 三件套——忠实度（有没有瞎编）、答案相关性（切题吗）、上下文利用率（真用上检索资料没）。我们项目 Recall@5≈96.3%、生成三项 0.87~0.90，且评测集由真实 chunk 反向生成、与 BEIR/RAGAS 同源，数字可复现。"),
+            ("为什么用「chunk 反向生成」自建 benchmark，而不是手写测试题？",
+             "手写测试集容易被「出题人偏见」污染——挑自己擅长的问题、答案凑得出来就显高。反向生成法是：从知识库真实 chunk 抽一段→反推能引出它的查询，该 chunk 的来源主体即标准答案（qrels），**零人工标注**且与 BEIR/MS MARCO/RAGAS 同源。2,754 条查询覆盖四个行业，gold 出处可在页面逐条核对，评测因此「不可作弊」。"),
+            ("你的检索 Recall 不是 100%，宏观行业最低（0.866），怎么看？",
+             "宏观 Recall 最低但**精确命中率反而最高**——说明不是检索器差，而是「同质内容互相挤占」：宏观政策类段落高度相似，Top-5 常装满同主题段，挤掉了少数异质黄金段。优化方向是提覆盖率（更强 embedding / 查询改写 / 更细切分），而非调排序。这恰好说明「看指标要结合业务解读，不能只看一个数字」。"),
+            ("RAG 怎么防止大模型编造（幻觉）？",
+             "三层闸：① **约束式 Prompt**——强制「仅依据参考资料作答、每条结论标注来源 PDF+页码」；② **可溯源**——答案后回写 [来源：XXX.pdf pNN]，用户能核对；③ **Verify Agent**——Consult 流程再让一个 agent 把答案与知识库/联网数据二次比对，压低幻觉。指标上由「忠实度(Faithfulness)」独立度量，我们项目≈0.90。"),
+        ]
+        for q, a in _rag_deep:
+            with st.expander(f"**{q}**"):
+                st.markdown(a)
+
 # ============================================================== 页面：RAG 知识库
 def _n(x):
     return f"{x:,}" if isinstance(x, int) else str(x)
@@ -3438,6 +3454,41 @@ def render_kb():
         st.caption(f"评测口径与 BEIR / MS MARCO / RAGAS 同源：从真实知识库 chunk 反向生成 {eval_overall.get('n_queries',0)} 条查询（查询即由语料自身生成，非人工挑选），用 BAAI/bge-small-zh-v1.5 编码后在所属行业 collection 内做余弦 Top-5 召回。"
                    f"相关性以「Top-K 是否命中 gold 主体（公司/政策主题）上下文」判定（RAGAS 式 entity/document-level context recall）；NDCG 采用分级相关性（精确命中源 chunk=2、同主体其他 chunk=1）。"
                    f"覆盖/相似度为应用启动实时统计。")
+        # 🗣 大白话：检索指标在回答「资料翻得对不对」
+        st.info("🗣 大白话：上面这些「检索指标」回答的是——**资料翻得对不对**。Recall@5 看前 5 条里有没有正确答案（≈96% 表示十次有九次半能翻到）；"
+                 "Precision@5 看翻出来的 5 条里有几条真相关；MRR 看正确答案排第几（越靠前越好）；NDCG 还看排序质量；"
+                 "来源覆盖 = 平均每条答案用到了几个不同文件，越高说明不依赖单一信源。行业参考是业界优秀 RAG 系统的典型水位，我们各项都达标甚至更高。")
+
+        # —— 简略版新增：RAG 生成质量评价指标（评测指标）——
+        gen = KB.get("generation_eval", {})
+        if gen:
+            go = gen.get("overall", {})
+            gmode = gen.get("mode", "proxy")
+            st.markdown('<div class="sec-title" style="margin-top:26px;">RAG 生成质量评价指标（评测指标）</div>'
+                        '<div class="sec-sub">完整 RAG 评测 = 检索指标（翻对资料没）+ 生成指标（答案基于资料 / 无幻觉 / 切题 / 真用上资料）。'
+                        '三项为业界标准 RAGAS 核心指标，由评测脚本镜像线上「专家智能体」完全相同的 prompt 生成答案、再让 DeepSeek 当裁判（LLM-as-Judge）逐项打分（0~1）。</div>',
+                        unsafe_allow_html=True)
+            if gmode == "llm":
+                gen_rows = [
+                    (f'{go.get("faithfulness", {}).get("mean", 0):.1%}', "Faithfulness 忠实度"),
+                    (f'{go.get("answer_relevance", {}).get("mean", 0):.1%}', "Answer Relevance 答案相关性"),
+                    (f'{go.get("context_utilization", {}).get("mean", 0):.1%}', "Context Utilization 上下文利用率"),
+                ]
+            else:
+                gen_rows = [
+                    (f'{go.get("answer_relevance_proxy", {}).get("mean", 0):.1%}', "答案相关性(代理)"),
+                    (f'{go.get("context_utilization_proxy", {}).get("mean", 0):.1%}', "上下文利用率(代理)"),
+                    ("待 LLM", "Faithfulness 忠实度(需 LLM)"),
+                ]
+            for col, (v, k) in zip(st.columns(3), gen_rows):
+                with col:
+                    st.markdown(f'<div class="kpi"><div class="v">{v}</div><div class="k">{k}</div></div>', unsafe_allow_html=True)
+            st.info("🗣 大白话：这些「生成指标」回答的是——**答案靠不靠谱**。忠实度 = 有没有瞎编（全基于资料）；"
+                     "答案相关性 = 有没有答到点上；上下文利用率 = 有没有真用上检索到的资料。三项都 0~1，越高越好。"
+                     "即便检索召回强（Recall@5≈98%），生成端仍须独立验证「不编造、切题、引用资料」。")
+        else:
+            st.info("🗣 大白话：生成指标（忠实度 / 答案相关性 / 上下文利用率）用于检验「答案靠不靠谱」，"
+                     "需运行 build_generation_eval.py 生成（配置 DEEPSEEK_API_KEY 后由 DeepSeek 当裁判打分）。")
         return
     # 一、RAG 知识库规模
     st.markdown('<div class="sec-title">RAG 知识库规模</div><div class="sec-sub">PDF → Markdown → 语义切分 → 中文向量化（bge 512 维）→ Chroma 持久化（4 个行业 collection）</div>', unsafe_allow_html=True)
@@ -3917,6 +3968,16 @@ def page_glossary():
       <h1>📖 {gl.get("title", "专有名词解释")}</h1>
       <p>{gl.get("intro", "")}</p>
     </div>''', unsafe_allow_html=True)
+
+    # —— Benchmark 速览（标准版 / 简略版均展示）——
+    st.markdown('<div class="sec-title" style="margin-top:18px;">📐 什么是 Benchmark（基准测试）· 本项目自建评测集</div>', unsafe_allow_html=True)
+    st.markdown('''
+    <div class="card" style="margin-top:6px;">
+      <p><b>Benchmark（基准测试）</b>：用一份<strong>固定、公开、人人可复现</strong>的测试集去考一个 AI 系统，得出的分数能在不同系统间横向比较——就像用同一张高考试卷比谁分高。RAG 领域公认的 benchmark 有
+      <b>BEIR</b>（跨任务检索）、<b>MS MARCO</b>（问答排序）、<b>RAGAS</b>（生成质量）。</p>
+      <p style="margin-bottom:0;">本项目<strong>不手写测试题</strong>，而用「<b>chunk 反向生成</b>」法自建 benchmark：从真实知识库随机抽一段原文（chunk），反推「能引出这段原文的问题」当作查询；该 chunk 的来源主体（公司 / 政策）即标准答案（qrels）。共 <b>2,754 条查询</b>，与 BEIR / MS MARCO / RAGAS 同源、<strong>零人工标注</strong>，且查询长什么样、黄金出处是哪份文件哪一节都可在页面逐条核对。</p>
+    </div>
+    ''', unsafe_allow_html=True)
 
     cats = gl.get("categories", [])
     total = sum(len(c.get("terms", [])) for c in cats)
