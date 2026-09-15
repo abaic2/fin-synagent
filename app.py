@@ -4001,11 +4001,11 @@ def load_glossary():
 # 核心术语白名单：与 glossary.json 的 "star":true 一致，作为兜底，
 # 确保即使部署环境的 glossary.json 未携带 star 字段，标星依然生效。
 CORE_TERMS = {
-    "多智能体（Multi-Agent）", "System-2 深思熟虑模式", "Leader（领导者智能体）",
-    "可解释性（Interpretability）", "RAG（检索增强生成）", "Chroma", "BGE 嵌入模型",
-    "余弦相似度（Cosine Similarity）", "Top-K", "微调（Fine-tuning）", "LoRA",
-    "SFT（监督微调）", "智能投顾（Robo-Advisor）", "资产配置",
-    "基本面 / 技术面 / 情绪面 / 行业面", "大模型（LLM）", "智能体 / Agent",
+    "多智能体（Multi-Agent）", "Leader（领导者智能体）",
+    "RAG（检索增强生成）", "知识库（Knowledge Base）", "Embedding（向量嵌入）",
+    "检索（Retrieval）", "Chunk（文本切块）", "Chroma", "BGE 嵌入模型",
+    "余弦相似度（Cosine Similarity）", "Top-K", "微调（Fine-tuning）",
+    "情感分析（Sentiment Analysis）", "大模型（LLM）", "智能体 / Agent",
     "提示词（Prompt）", "幻觉（Hallucination）", "AI as Judge", "三层评测体系",
 }
 
