@@ -3399,7 +3399,10 @@ def page_interview():
                 """, unsafe_allow_html=True)
 
     # 第二部分 · 技术高频问答（按 RAG / 微调 / 通用 / LangGraph 归类，扁平展示）
-    with st.expander("第二部分 · 技术高频问答（RAG / 微调 / 通用 / LangGraph · 点击展开/收起）", expanded=(not is_lite)):
+    _tech_hdr = ("第二部分 · 技术高频问答（RAG / 通用 · 点击展开/收起）"
+                 if is_lite else
+                 "第二部分 · 技术高频问答（RAG / 微调 / 通用 / LangGraph · 点击展开/收起）")
+    with st.expander(_tech_hdr, expanded=(not is_lite)):
         tech_groups = [
             ("📚 RAG 与知识库", INTERVIEW_TECH_RAG),
             ("🔧 微调与训练", INTERVIEW_TECH_FT),
