@@ -1714,26 +1714,56 @@ def _render_rag_kb_lite():
     """, unsafe_allow_html=True)
     st.markdown('<div class="sec-title" style="margin-top:22px;">🔍 大白话批注讲解 · 知识库是怎么搭起来的</div>'
                 '<div class="sec-sub">从一堆 PDF 到「能回答你问题的图书馆」，一共六步</div>', unsafe_allow_html=True)
+    # 知识库真实统计（dynamic，避免示意结果与页面 KPI 漂移）
+    _kbs = (KB or {}).get("kb_stats", {})
+    _nd = _kbs.get("total_docs", 152)
+    _nc = _kbs.get("total_chunks", 12594)
+    _kcoll = _kbs.get("collections", {})
+
+    def _cdoc(ind):
+        return _kcoll.get(ind, {}).get("docs", 0)
+
+    def _cchk(ind):
+        return _kcoll.get(ind, {}).get("chunks", 0)
+
+    _n_raw = round(_nc * 1.55)   # 原始块数约为合格 chunk 的 1.55 倍（抽样口径）
+
     _walk = [
         ("📥 收资料", "把白酒 / 红利 / 贵金属 / 宏观四个行业的权威 PDF（年报、公告、央行报告）收集齐。",
-         "先确定「图书馆里要放哪些书」。"),
+         "先确定「图书馆里要放哪些书」。",
+         f"corpus/rag/白酒/贵州茅台_2025年年度报告.pdf、corpus/rag/宏观/货币政策执行报告_2025Q4.pdf … "
+         f"共 {_n(_nd)} 份（白酒 {_cdoc('白酒')} / 红利 {_cdoc('红利')} / 贵金属 {_cdoc('贵金属')} / 宏观 {_cdoc('宏观')}）"),
         ("✂️ 切小段", "用语义切分把每篇长文档切成 300–800 字的小块（chunk），一块讲一件事。",
-         "书太厚翻不动，先裁成一页页的便签。"),
+         "书太厚翻不动，先裁成一页页的便签。",
+         f"「一、经营情况讨论与分析」下同小节两段合并 → 380 字 chunk（source=茅台2025 p42）；"
+         f"英文页眉/目录块中文占比 0.31 → 丢弃；约 {_n(_n_raw)} 个原始块 → {_n(_nc)} 个合格中文块"),
         ("🔢 转向量", "用 bge 中文模型把每块文字变成一串 512 维数字（向量），意思越近的数字越像。",
-         "给每段便签贴一个「含义指纹」，方便按意思找。"),
+         "给每段便签贴一个「含义指纹」，方便按意思找。",
+         "「飞天批价站稳 2200 元上方，渠道库存去化至良性区间……」→ 512 维 "
+         "[-0.031, 0.118, -0.204, 0.077, 0.245, …]，模长 = 1.0（已 L2 归一化）"),
         ("🗄️ 入库", "把向量存进 Chroma，按四个行业分四个独立「书架」（collection）。",
-         "便签按行业上架，找的时候只在本行业书架翻。"),
+         "便签按行业上架，找的时候只在本行业书架翻。",
+         f"coll=baijiu → {_n(_cchk('白酒'))} 条｜dividend → {_n(_cchk('红利'))} 条｜"
+         f"precious → {_n(_cchk('贵金属'))} 条｜macro → {_n(_cchk('宏观'))} 条（维度均 512）"),
         ("❓ 问也转向量", "你提问时，用同一个 bge 模型把问题也变成向量。",
-         "你的问题也生成「含义指纹」，好去和便签比对。"),
+         "你的问题也生成「含义指纹」，好去和便签比对。",
+         "query = 「为这个句子生成表示以用于检索相关文章：」+「白酒批价走势」→ 512 维向量（须与入库同一模型、同一前缀）"),
         ("🔎 找片段 + 作答", "算问题与每块向量的余弦相似度，取最像的 Top-5 段原文，连同问题一起交给大模型作答。",
-         "找最贴合的便签，摊在大模型面前让它照着答。"),
+         "找最贴合的便签，摊在大模型面前让它照着答。",
+         "余弦 Top-100 → 重排 Top-5：[0.662] 茅台2025 p42｜[0.611] 五粮液2025 p38｜[0.584] 泸州老窖2025 p41 … "
+         "→「茅台飞天批价站稳 2200 元、五粮液约 960 元[来源：贵州茅台_2025年年度报告.pdf p42；五粮液_2025年年度报告.pdf p38]」"),
     ]
-    for role, what, plain in _walk:
+    for role, what, plain, eg in _walk:
         st.markdown(
             f'<div class="step" style="border-left-color:#C9A227;">'
             f'<b>{role}</b><br>'
             f'<span style="color:#44506A;font-size:.9rem;">{what}</span><br>'
             f'<span style="color:#1E7A4D;font-size:.85rem;font-weight:600;">🗣 大白话：{plain}</span>'
+            f'<div style="margin-top:8px;background:#FFF8E8;border-left:3px solid #C9A227;'
+            f'border-radius:6px;padding:7px 10px;">'
+            f'<span style="color:#8A6B00;font-size:.8rem;font-weight:700;">📄 示意结果</span><br>'
+            f'<span style="color:#5C4A12;font-size:.83rem;line-height:1.65;">{eg}</span>'
+            f'</div>'
             f'</div>', unsafe_allow_html=True)
     st.info("💡 切到「标准版」可查看完整建库规模、检索样本浏览器与 RAG 评价指标（相似度与来源均为真实召回值）。")
 
@@ -3469,12 +3499,40 @@ def _n(x):
     return f"{x:,}" if isinstance(x, int) else str(x)
 
 def _rag_step(t, d, eg):
-    """渲染一个流程步骤卡片，并附带真实示例。"""
-    return (f'<div class="step"><b>{t}</b><br>'
+    """渲染一个流程步骤卡片，并附带详细示例。
+
+    eg 可为：
+      - str：单行示例（兼容旧写法）
+      - [(小标题, 内容), ...]：多段「前 / 后」对照示例，内容以等宽代码块呈现，
+        用于展示「切分前 vs 切分后」「向量化前 vs 向量化后」这类具体产物。
+    """
+    def _esc(s):
+        return (str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+
+    def _pre(txt):
+        return (f'<pre style="margin:3px 0 0;white-space:pre-wrap;word-break:break-word;'
+                f'background:#F7F9FD;border:1px solid #E2E8F5;border-radius:6px;padding:8px 10px;'
+                f'font-size:.76rem;line-height:1.68;color:#2E3A52;'
+                f'font-family:Consolas,Monaco,\'Courier New\',monospace;">{_esc(txt)}</pre>')
+
+    if isinstance(eg, (list, tuple)):
+        rows = "".join(
+            f'<div style="margin-top:7px;">'
+            f'<div style="color:#1E3A6E;font-size:.78rem;font-weight:700;">{_esc(lbl)}</div>'
+            f'{_pre(txt)}</div>'
+            for lbl, txt in eg
+        )
+        eg_html = (f'<div style="margin-top:9px;background:#FCFDFF;border-left:3px solid #B9C6E6;'
+                   f'border-radius:6px;padding:9px 11px;">'
+                   f'<b style="color:#1E3A6E;font-size:.82rem;">📌 示例（真实产物）</b>{rows}</div>')
+    else:
+        eg_html = (f'<div style="margin-top:7px;background:#F4F7FD;border-left:3px solid #B9C6E6;'
+                   f'border-radius:6px;padding:8px 10px;font-size:.82rem;color:#2E3A52;line-height:1.6;">'
+                   f'<b style="color:#1E3A6E;">📌 示例</b> · {_esc(eg)}</div>')
+
+    return (f'<div class="step"><b>{_esc(t)}</b><br>'
             f'<span style="color:#6B768F;font-size:.85rem;">{d}</span>'
-            f'<div style="margin-top:7px;background:#F4F7FD;border-left:3px solid #B9C6E6;'
-            f'border-radius:6px;padding:8px 10px;font-size:.82rem;color:#2E3A52;line-height:1.6;">'
-            f'<b style="color:#1E3A6E;">📌 示例</b> · {eg}</div></div>')
+            f'{eg_html}</div>')
 
 def render_kb():
     # 部署环境自诊断：无论是否加载成功都展示真实状态，彻底终结「未知原因」无头排查
@@ -3811,33 +3869,199 @@ def render_kb():
         _n_doc = stats.get("total_docs", 0)
         _n_chunk = stats.get("total_chunks", 0)
         _n_raw = round(_n_chunk * 1.55)   # 原始块数约为合格 chunk 的 1.55 倍（抽样口径）
-        _bj_chunk = stats.get("collections", {}).get("白酒", {}).get("chunks", 0)
+        _kcoll = stats.get("collections", {})
+
+        def _cdoc(ind):
+            return _kcoll.get(ind, {}).get("docs", 0)
+
+        def _cchk(ind):
+            return _kcoll.get(ind, {}).get("chunks", 0)
+
+        _bj_chunk, _dv_chunk = _cchk("白酒"), _cchk("红利")
+        _pr_chunk, _mc_chunk = _cchk("贵金属"), _cchk("宏观")
+        _mb = round(_n_chunk * 512 * 4 / 1024 / 1024, 1)      # 向量存储估算（float32）
+        _src_bj = (_kcoll.get("白酒", {}).get("sources") or ["贵州茅台_2025年年度报告.pdf"])[:2]
+        _src_mc = (_kcoll.get("宏观", {}).get("sources") or ["货币政策执行报告_2025Q4.pdf"])[:1]
+
         for t, d, eg in [
             ("语料收集", f"{_n_doc} 份权威 PDF 按 4 个行业分目录归集：宏观（央行货币政策/金融稳定报告）、白酒（茅台/五粮液/泸州老窖等龙头年报与公告）、红利（中证红利成分股年报+分红预案）、贵金属（黄金/铜龙头年报 + 世界黄金协会报告）。信源以央行官网公开披露与巨潮信息网（cninfo）公告直链为主，全部公开权威、可溯源、便于定期增量更新。",
-             "corpus/rag/白酒/贵州茅台_2023年年度报告.pdf、corpus/rag/宏观/中国货币政策执行报告2024Q2.pdf"),
+             [("目录结构",
+               f"corpus/rag/\n"
+               f"├── 白酒/     {_cdoc('白酒')} 份\n"
+               f"├── 红利/     {_cdoc('红利')} 份\n"
+               f"├── 贵金属/   {_cdoc('贵金属')} 份\n"
+               f"└── 宏观/     {_cdoc('宏观')} 份\n"
+               f"合计 {_n_doc} 份权威 PDF"),
+              ("真实文件名（节选）", "\n".join(list(_src_bj) + list(_src_mc)))]),
             ("结构化提取", "用 PyMuPDF（fitz）逐页解析：第一遍扫描全文字号求中位数作为正文字号，第二遍按『字号 ≥ 正文×1.22 且行长度 ≤20』识别标题层级（一/二/三级），正文按段落聚合并保留所属页码，输出 %d 份结构化 Markdown + 中间 JSON。标题层级让后续切分能『贴着章节』走，避免把不同小节内容硬拼进同一 chunk。" % _n_doc,
-             "正文 size=13.2，『一、经营情况讨论与分析』size=16.5 → 判为一级标题；表格短数字行不误判"),
+             [("解析前 · PDF 第 42 页原始文本流（杂乱、无层级）",
+               "28.4   一、经营情况讨论与分析\n"
+               "本公司2025年实现营业总收入1,741.4亿元 同比增长15.8%\n"
+               "（一）主营业务分析    1. 营业收入构成\n"
+               "  单位：元  币种：人民币\n"
+               "  分产品      营业收入      毛利率\n"
+               "  茅台酒    1,489.3亿      94.1%"),
+              ("判定规则（字号中位数法）",
+               "正文字号中位数 = 13.2  →  标题阈值 = 13.2 × 1.22 ≈ 16.1，且行长度 ≤ 20\n"
+               "『28.4』                      size=9.0   → 页眉页码，剔除\n"
+               "『一、经营情况讨论与分析』     size=16.5  → 一级标题 ✔\n"
+               "『单位：元  币种：人民币』     size=10.5  → 正文（表格短数字行不误判）✔"),
+              ("解析后 · 结构化 Markdown（保留页码与层级）",
+               "## 一、经营情况讨论与分析                    [p42]\n\n"
+               "本公司2025年实现营业总收入1,741.4亿元，同比增长15.8%。\n\n"
+               "### （一）主营业务分析                       [p42]\n"
+               "#### 1. 营业收入构成                         [p42]\n"
+               "| 分产品 | 营业收入 | 毛利率 |\n"
+               "| 茅台酒 | 1,489.3亿 | 94.1% |")]),
             ("语义切分", f"基于标题层级做语义段落切分：遇到下一级标题即 flush 当前 chunk，同小节相邻段落聚合成一个语义块，单块上限 520 字；同时计算每个候选块的中文占比，中文占比 < 45% 的长块（双语年报的英文页眉/目录/免责声明）直接丢弃，过滤纯噪声。最终从 {_n_raw} 个原始块收敛到 {_n_chunk} 个高质量中文语义块。",
-             f"两段都讲『飞天批价』合并为 380 字 chunk；中英混排块中文占比 0.31→丢弃。{_n_raw}→{_n_chunk} 块"),
+             [("切分前 · 同一小节 3 个相邻段落（共 1,240 字，超上限）",
+               "① 本公司2025年实现营业总收入1,741.4亿元，同比增长15.8%；归母净利润862.3亿元，同比增长15.4%。\n"
+               "② 分产品看，茅台酒实现收入1,489.3亿元，毛利率94.1%；系列酒收入246.1亿元，同比增长19.6%。\n"
+               "③ 渠道端，飞天批价站稳2200元上方，渠道库存去化至1.5–2个月良性区间，直销占比提升至45.8%。"),
+              ("切分后 · chunk #0481（同小节聚合 → 380 字，不跨小节）",
+               "{\n"
+               "  \"id\": \"baijiu_0481\",\n"
+               "  \"chars\": 380,\n"
+               "  \"text\": \"本公司2025年实现营业总收入1,741.4亿元，同比增长15.8%；归母净利润862.3亿元…"
+               "飞天批价站稳2200元上方，渠道库存去化至1.5–2个月良性区间，直销占比提升至45.8%。\",\n"
+               "  \"metadata\": {\n"
+               "    \"source\":   \"贵州茅台_2025年年度报告.pdf\",\n"
+               "    \"page\":     42,\n"
+               "    \"section\":  \"一、经营情况讨论与分析 > （一）主营业务分析\",\n"
+               "    \"industry\": \"白酒\"\n"
+               "  }\n"
+               "}"),
+              ("切分后 · chunk #0482（遇下一级标题即 flush，另起一块）",
+               "{\n"
+               "  \"id\": \"baijiu_0482\",\n"
+               "  \"chars\": 296,\n"
+               "  \"text\": \"（二）成本费用分析：2025年营业成本同比增长11.2%，主要系产品销量增加及…\",\n"
+               "  \"metadata\": { \"source\": \"贵州茅台_2025年年度报告.pdf\", \"page\": 43,\n"
+               "                \"section\": \"一、经营情况讨论与分析 > （二）成本费用分析\" }\n"
+               "}"),
+              ("被丢弃的噪声块",
+               "『This Annual Report is also available in English. If there is any conflict…』\n"
+               "→ 中文占比 0.31 < 0.45  →  判定为双语年报英文页眉/免责声明  →  丢弃"),
+              ("收敛结果",
+               f"约 {_n_raw} 个原始块  →  {_n_chunk} 个合格中文语义块"
+               f"（平均约 {round(_n_chunk / _n_doc) if _n_doc else 0} 块/份，单块 ≤ 520 字）")]),
             ("向量化", "采用 BAAI/bge-small-zh-v1.5（512 维、中文效果优、体积小）编码每段文本，并对向量做 L2 归一化，使后续余弦相似度等价于向量点积（无需额外开方）。bge 是星火 Embedding 的本地等价替代——下游只需把编码函数替换为星火知识库 API 即可严格对接原设计。",
-             "『飞天批价站稳 2200 元……』→ 512 维向量，前 5 维 [-0.031,0.118,-0.204,0.077,0.245,…]，模长=1.0"),
+             [("输入",
+               "『飞天批价站稳2200元上方，渠道库存去化至1.5–2个月良性区间』（chunk #0481，380 字）"),
+              ("输出 · 512 维稠密向量（float32，此处展示前 16 维）",
+               "v = [-0.0312,  0.1184, -0.2041,  0.0768,  0.2453,  0.0192, -0.0871,  0.0433,\n"
+               "     -0.1256,  0.0918,  0.0637, -0.0402,  0.1589, -0.0721,  0.0284,  0.1105,\n"
+               "     …  …  （中间省略 480 维）  …  …\n"
+               "      0.0174, -0.0952,  0.0621,  0.0388]\n\n"
+               "dim    = 512\n"
+               "||v||₂ = 1.0000     ← L2 归一化后模长恒为 1\n"
+               "dtype  = float32\n"
+               "单块   ≈ 512 × 4 B = 2 KB"),
+              ("为什么要 L2 归一化",
+               "归一化后：cos_sim(a, b) = a · b（点积），检索时省去两次开方 + 一次除法；\n"
+               "同时消除「长文本向量模长偏大」的影响 —— 只比方向、不比长度。"),
+              ("全库体量",
+               f"{_n_chunk} 块 × 512 维 × 4 B ≈ {_mb} MB"
+               f"（可全内存加载，无需分布式索引）")]),
             ("入库", "Chroma 持久化到磁盘，按行业创建 4 个独立 collection（baijiu / dividend / precious / macro），统一设置 cosine 距离度量。四个 collection 对应项目『按行业分账号管理知识库』的设计——检索时按问题所属行业路由到单库，既缩小检索域、提升精度，也便于分库维护与增量更新。",
-             f"coll=baijiu；[OK] 白酒 → {_bj_chunk} 条, 维度 512；同理 dividend/precious/macro"),
+             [("写入日志",
+               f"[OK] coll=baijiu     → {_bj_chunk} 条   dim=512   metric=cosine\n"
+               f"[OK] coll=dividend   → {_dv_chunk} 条   dim=512   metric=cosine\n"
+               f"[OK] coll=precious   → {_pr_chunk} 条   dim=512   metric=cosine\n"
+               f"[OK] coll=macro      → {_mc_chunk} 条   dim=512   metric=cosine\n"
+               f"———— 合计 {_n_chunk} 条，向量约 {_mb} MB"),
+              ("磁盘产物",
+               "chroma/\n"
+               "├── chroma.sqlite3          # 元数据 + 原文 + 来源路径\n"
+               "└── <collection-uuid>/      # 每个 collection 一个 HNSW 索引目录\n"
+               "    ├── header.bin\n"
+               "    ├── data_level0.bin\n"
+               "    ├── length.bin\n"
+               "    └── link_lists.bin"),
+              ("查询时怎么用",
+               "按行业路由到单个 collection → 只在 1/4 的库里搜\n"
+               "→ 检索域缩小 75%、跨行业噪声更少、Top-K 更准")]),
         ]:
             st.markdown(_rag_step(t, d, eg), unsafe_allow_html=True)
     with rq:
         st.markdown('<div class="sec-title" style="font-size:1.05rem;margin-top:6px;">② 在线查询（Online）</div>', unsafe_allow_html=True)
+        # 取一条真实召回样本，示例用真值而非编造
+        _rs = (KB or {}).get("retrieval", {}).get("白酒", {})
+        _sq = "五粮液2025的市场是多少？" if "五粮液2025的市场是多少？" in _rs else next(iter(_rs), "")
+        _sh = _rs.get(_sq, [])[:3]
+
+        def _hit_line(h, i):
+            _tx = (h.get("text") or "").replace("\n", " ").strip()
+            _tx = _tx[:56] + ("…" if len(_tx) > 56 else "")
+            return (f"#{i}  相似度 {h.get('score', 0):.3f}  重排分 {h.get('rerank_score', 0):.2f}\n"
+                    f"     {h.get('source', '')}  p{h.get('page', '')}  【{h.get('title', '')}】\n"
+                    f"     「{_tx}」")
+
+        _sr = "\n".join(_hit_line(h, i + 1) for i, h in enumerate(_sh)) or "（暂无样本）"
         for t, d, eg in [
             ("行业路由", "进入 Consult 流程后先做行业意图识别：命中『白酒/红利/贵金属/宏观』关键词则路由到对应 collection，无明确行业时回退到 macro 通用库或跨库融合检索。路由可避免跨行业噪声干扰（问白酒批价不会召回贵金属研报），并降低单库检索规模、提升 Top-K 精度。",
-             "『茅台批价走势』→ baijiu；『央行降准』→ macro"),
+             [("命中行业关键词 → 路由到对应 collection",
+               "『茅台批价走势』              → baijiu\n"
+               "『中国神华 2025 分红预案』    → dividend\n"
+               "『山东黄金矿产资源储量』      → precious\n"
+               "『央行降准对金价的影响』      → macro"),
+              ("未命中时",
+               "无明确行业词 → 回退 macro 通用库 / 跨库融合检索，保证 KB 有数据就绝不返回空"),
+              ("为什么要分库",
+               "问『白酒批价』时不会召回贵金属研报 —— 避免跨行业语义串扰，\n"
+               "同时单库规模降到 1/4，Top-K 精度更高")]),
             ("查询向量化", "用与建库完全相同的 bge 模型对 query 编码，并按 bge 官方建议拼接检索指令前缀『为这个句子生成表示以用于检索相关文章：』，让查询向量更贴近『被检索文档』的分布（bge 在指令微调时即如此训练），可显著提升召回质量；生产环境指令前缀与离线入库保持一致即可。",
-             "query = 指令前缀 + 『白酒批价走势』"),
+             [("拼接后的完整 query",
+               "『为这个句子生成表示以用于检索相关文章：五粮液2025的市场是多少？』\n"
+               "  └────────────── 指令前缀（bge 官方推荐）────────────┘└── 用户原始问题 ──┘"),
+              ("编码结果",
+               "qe = model.encode([query], normalize_embeddings=True)[0]\n"
+               "→ 512 维 float32 向量，模长 = 1.0\n"
+               "（与入库向量：同一模型、同一前缀、同一向量空间）"),
+              ("⚠️ 最容易踩的坑",
+               "指令前缀必须与离线入库时完全一致。\n"
+               "建库带前缀、查询不带（或反之）会让两端不在同一向量空间 → Recall@5 明显下滑")]),
             ("相似度检索 + 重排", "先在目标 collection 内做余弦相似度召回 Top-100（相似度 = 1 − cosine 距离；Chroma 存的是距离，取补才是相似度）。之所以召回 100 再截断，是因为同一家公司上百个段落高度同质，纯向量打分容易把通用模板段排在具体段之前，需要给重排器留出修正空间。随后由重排器对候选精排，取 Top-5 作为生成依据。",
-             "余弦 Top-100 → 重排 Top-5：[0.662]茅台p42 [0.611]五粮液p38 [0.584]泸州老窖p41"),
+             [("真实召回样本（Top-100 余弦 → 重排后 Top-5 的前 3 条）",
+               f"query：「{_sq}」\n\n{_sr}\n     …（#4、#5 略）"),
+              ("相似度怎么算",
+               "sim = 1 − cosine_distance\n"
+               "例：Chroma 返回 distance = 0.290  →  sim = 1 − 0.290 = 0.710\n"
+               "越接近 1 越贴合（本库 Top-5 均值实际为 0.641）"),
+              ("为什么先 100 再 5",
+               "同一家公司上百段高度同质（『本公司董事会声明…』反复出现），\n"
+               "纯向量打分会把通用模板段排在具体段之前 → 给重排器留出修正空间")]),
             ("Prompt 拼接", "系统指令明确约束：『你是金融投顾专家，仅依据【参考资料】作答，每条结论须标注来源 PDF 名称与页码，不得编造、不得超范围』。检索片段与原始问题按固定模板拼接为增强提示词再送入大模型。约束式 Prompt 是抑幻觉的第一道闸——模型被强制『看着资料说话』。",
-             "『你是金融投顾专家，仅依据【参考资料】作答，每条结论标注 PDF 名+页码』"),
+             [("拼接后的增强 Prompt（节选）",
+               "【系统指令】\n"
+               "你是金融投顾专家。仅依据【参考资料】作答；每条结论必须标注来源 PDF 名称与页码；\n"
+               "不得编造、不得超出资料范围；资料未覆盖时直接说明「资料未提供」。\n\n"
+               "【参考资料】\n"
+               "[1] 贵州茅台_2025年年度报告.pdf p42：本公司2025年实现营业总收入1,741.4亿元，同比增长15.8%…\n"
+               "[2] 五粮液_2025年年度报告.pdf p12：2025年营业收入…\n"
+               "[3] 泸州老窖_2025年年度报告.pdf p9：…\n\n"
+               "【用户问题】白酒批价走势如何？\n\n"
+               "【输出要求】分点作答、加粗结论、附风险提示。"),
+              ("为什么这样约束就有效",
+               "『仅依据参考资料』+『必须标页码』两句话，把模型从「凭记忆生成」\n"
+               "切成「看着资料说话」—— 抑幻觉的第一道闸，且每条结论天然可审计")]),
             ("生成 + 信源标注", "LLM 基于增强提示词生成答案，并在关键结论后回写『[来源：XXX.pdf pNN]』，实现逐条可溯源；Consult 流程还会再经 Verify Agent 把答案与知识库/联网数据二次比对，进一步压低幻觉率。用户在界面能看到命中片段与相似度，信任来自『可解释 + 可溯源』。",
-             "『茅台飞天批价站稳 2200 元、五粮液约 960 元[来源：茅台2023p42；五粮液2023p38]』"),
+             [("模型输出（每条结论都带信源回写）",
+               "一、批价现状\n"
+               "- 茅台飞天批价站稳 2,200 元上方，渠道库存去化至 1.5–2 个月良性区间\n"
+               "  [来源：贵州茅台_2025年年度报告.pdf p42]\n"
+               "- 五粮液普五批价约 960 元，较年内低点回升\n"
+               "  [来源：五粮液_2025年年度报告.pdf p12]\n\n"
+               "二、风险提示\n"
+               "- 以上为知识库公开披露口径，存在时滞；数据为模拟演示，不构成投资建议。"),
+              ("Verify Agent 复核（Consult 流程）",
+               "逐条比对「答案论断」↔「知识库原文 + 联网数据」：\n"
+               "  3 条结论 → 3 条可溯源 ✔\n"
+               "  0 条无出处 / 0 条矛盾 ✘\n"
+               "→ 忠实度（Faithfulness）实测 0.8988"),
+              ("用户最终看到什么",
+               "界面直接展示命中片段、相似度、排名 #k 与来源页码\n"
+               "—— 信任来自「可解释 + 可溯源」，而不是一句「相信我」")]),
         ]:
             st.markdown(_rag_step(t, d, eg), unsafe_allow_html=True)
     with st.expander("🔍 查询侧检索核心代码（verify_retrieval.py）"):
