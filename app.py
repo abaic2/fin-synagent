@@ -4295,8 +4295,6 @@ with st.sidebar:
                 default_index=_default, key="nav_main", styles=SB_STYLES,
                 on_change=_on_nav_change)
     st.markdown("---")
-    st.caption("富国开贸团队 · 演示 Demo v2")
-    st.caption("⚠️ 数据为模拟数据，不构成投资建议")
 
 choice = st.session_state["nav"]
 # 简略版下若因异常落入非核心页，强制回到简略版首页，保证菜单与内容一致
