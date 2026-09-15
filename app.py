@@ -3287,9 +3287,9 @@ INTERVIEW_TECH_RAG = [
     ("怎么判断 RAG 检索好不好？用什么指标？",
      "分两层看：**检索层**用标准 IR 指标——Recall@5（前 5 条里有没有正确答案）、Precision@5、MRR（正确答案排第几）、NDCG@5（排序质量），外加「来源覆盖」看是否只依赖单一信源；**生成层**用 RAGAS 三件套——忠实度（有没有瞎编）、答案相关性（切题吗）、上下文利用率（真用上检索资料没）。我们项目 Recall@5≈96.3%、生成三项 0.87~0.90，且评测集由真实 chunk 反向生成、与 BEIR/RAGAS 同源，数字可复现。", True),
     ("为什么用「chunk 反向生成」自建 benchmark，而不是手写测试题？",
-     "手写测试集容易被「出题人偏见」污染——挑自己擅长的问题、答案凑得出来就显高。反向生成法是：从知识库真实 chunk 抽一段→反推能引出它的查询，该 chunk 的来源主体即标准答案（qrels），**零人工标注**且与 BEIR/MS MARCO/RAGAS 同源。2,754 条查询覆盖四个行业，gold 出处可在页面逐条核对，评测因此「不可作弊」。", True),
+     "手写测试集容易被「出题人偏见」污染——挑自己擅长的问题、答案凑得出来就显高。反向生成法是：从知识库真实 chunk 抽一段→反推能引出它的查询，该 chunk 的来源主体即标准答案（qrels），**零人工标注**且与 BEIR/MS MARCO/RAGAS 同源。2,754 条查询覆盖四个行业，gold 出处可在页面逐条核对，评测因此「不可作弊」。", False),
     ("你的检索 Recall 不是 100%，宏观行业最低（0.866），怎么看？",
-     "宏观 Recall 最低但**精确命中率反而最高**——说明不是检索器差，而是「同质内容互相挤占」：宏观政策类段落高度相似，Top-5 常装满同主题段，挤掉了少数异质黄金段。优化方向是提覆盖率（更强 embedding / 查询改写 / 更细切分），而非调排序。这恰好说明「看指标要结合业务解读，不能只看一个数字」。", True),
+     "宏观 Recall 最低但**精确命中率反而最高**——说明不是检索器差，而是「同质内容互相挤占」：宏观政策类段落高度相似，Top-5 常装满同主题段，挤掉了少数异质黄金段。优化方向是提覆盖率（更强 embedding / 查询改写 / 更细切分），而非调排序。这恰好说明「看指标要结合业务解读，不能只看一个数字」。", False),
     ("RAG 怎么防止大模型编造（幻觉）？",
      "三层闸：① **约束式 Prompt**——强制「仅依据参考资料作答、每条结论标注来源 PDF+页码」；② **可溯源**——答案后回写 [来源：XXX.pdf pNN]，用户能核对；③ **Verify Agent**——Consult 流程再让一个 agent 把答案与知识库/联网数据二次比对，压低幻觉。指标上由「忠实度(Faithfulness)」独立度量，我们项目≈0.90。", True),
 ]
@@ -3330,6 +3330,28 @@ INTERVIEW_TECH_LG = [
     ("什么是 LangGraph？它和普通 LLM 串联（Chain / 线性工作流）有什么区别？",
      "LangGraph 是 LangChain 团队开源的**多智能体编排框架**，用「有向图（StateGraph）」显式描述工作流：节点是计算步骤（检索 / 分析 / 批评），边是流转关系。\n\n**与普通 Chain 的区别**：① Chain 是单向线性、跑完即止，难表达分支与回环；LangGraph 原生支持**条件分支、循环回环、持久化状态**；② 普通流程状态靠变量传递、易乱，LangGraph 用统一 **State（TypedDict）** 作为唯一数据通道，每个节点读写其中字段；③ 支持 Checkpointer 断点续跑与人工介入。\n\n**本项目用法**：Consult 咨询（Leader→RAG→专家→批评→校验→总结）与 Screen 荐股（12 节点筛选树 + 批评-修正回环）两条流水线均为 StateGraph 编排。", True),
 ]
+
+# 简略版技术高频问答「大白话」讲解：键为问题原文，值为一句人话翻译（仅简略版渲染）
+INTERVIEW_PLAIN = {
+    "什么是 RAG？完整流程是什么？有什么作用？":
+        "大白话：让 AI 先翻你的资料库、再开口答题，所以答案有据可查、不瞎编。流程就是：切资料→转向量→入库→问也转向量→按相似度找→拼进提示词→生成。",
+    "什么是模型幻觉？产生原因是什么？如何抑制？":
+        "大白话：就是 AI 一本正经地编瞎话。原因多是它重流畅不重真假、又没实时核对。我们靠 RAG 限死依据 + 联网搜 + 事实校验三道闸来压住。",
+    "如何评估一个 RAG 系统的效果？有哪些关键指标？":
+        "大白话：分两层看——检索层看「该找的找没找到、排得顺不顺」（Recall/NDCG），生成层看「有没有瞎编、答没答到点上、用没用上资料」（忠实度/相关性/利用率）。",
+    "怎么判断 RAG 检索好不好？用什么指标？":
+        "大白话：看两套指标——检索层用 Recall@5（前5条有没有正确答案）、MRR（排第几）、NDCG（排得顺不顺）；生成层用 RAGAS 三件套。我们 Recall@5≈96%、生成三项 0.87~0.90。",
+    "RAG 和微调（Fine-tuning）各自解决什么问题？什么场景该用哪个？":
+        "大白话：RAG 解决「知识」问题（让 AI 用上最新/私域资料、答案可溯源），微调解决「能力/风格」问题（让 AI 学会特定口吻）。经验：先 RAG，不够再微调。",
+    "RAG 怎么防止大模型编造（幻觉）？":
+        "大白话：三道闸——① 提示词强制「只准照资料说、每条标来源」；② 答案后回写 [来源：XXX.pdf pNN] 让你能核对；③ 再派个 Verify Agent 把答案和知识库/联网数据二次比对。",
+    "什么是 Agent？Agent 和 LLM 有什么区别？":
+        "大白话：Agent 是「会想+会动」的 AI——不光回答问题，还能自己规划步骤、调用工具（搜索/查库/算数）把事办成；LLM 只是它的大脑。",
+    "你们的三层评测体系是怎么设计的？":
+        "大白话：请 AI 考官打分 + 请 AI 扮用户挑刺 + 真人评审交叉核对，三道关一起上，结论才靠谱。",
+    "什么是 Transformer 与注意力机制？为什么适合处理金融文本？":
+        "大白话：现代大模型的地基，核心是「注意力」——让文章里任意两个词直接关联，所以研报里隔好几段的关键信息它也能串起来。",
+}
 
 RESUME_NONTECH = (
     "Fin Synagent 是一套面向个人投资者的 <b>AI 智能投顾系统</b>。它能像专业投资顾问一样，用自然语言回答投资咨询、推荐股票、解读研报，"
@@ -3385,6 +3407,8 @@ def page_interview():
             ("🕸 LangGraph 多智能体编排", INTERVIEW_TECH_LG),
         ]
         for g_title, g_items in tech_groups:
+            if is_lite and g_title in ("🔧 微调与训练", "🕸 LangGraph 多智能体编排"):
+                continue
             _shown = [it for it in g_items if (not is_lite or (bool(it[2]) if len(it) > 2 else False))]
             if not _shown:
                 continue
@@ -3393,8 +3417,11 @@ def page_interview():
             for item in _shown:
                 q, a = item[0], item[1]
                 star = bool(item[2]) if len(item) > 2 else False
+                plain = INTERVIEW_PLAIN.get(q, "")
                 with st.expander(f"**{'⭐ ' if star else ''}{q}**"):
                     st.markdown(a)
+                    if is_lite and plain:
+                        st.info(f"🗣 大白话：{plain}")
     if is_lite:
         _total = sum(len(g[1]) for g in tech_groups)
         st.caption(f"简略版仅展示标星（⭐）高频技术题；完整 {_total} 题技术问答请切换到「标准版」。")
@@ -4037,10 +4064,12 @@ def page_glossary():
                 continue
             st.markdown(f'<div class="sec-title" style="margin-top:14px;">{c.get("icon", "•")} {c.get("name", "")} · 核心术语（{len(core)} 条）</div>', unsafe_allow_html=True)
             rows = "".join(
-                f'<div class="gloss-card">'
-                f'<div class="gt{" gt-star" if _is_core(t) else ""}">{"⭐ " if _is_core(t) else ""}{t.get("term","")}</div>'
-                f'<div class="gd">{t.get("def","")}</div>'
-                f'</div>' for t in core)
+                (f'<div class="gloss-card">'
+                 f'<div class="gt{" gt-star" if _is_core(t) else ""}">{"⭐ " if _is_core(t) else ""}{t.get("term","")}</div>'
+                 f'<div class="gd">{t.get("def","")}</div>'
+                 + (f'<div style="margin-top:6px;color:#1E7A4D;font-size:.85rem;font-weight:600;background:#EAF6EE;border-left:3px solid #1E9E6A;padding:6px 8px;border-radius:6px;">🗣 大白话：{t.get("plain","")}</div>' if t.get("plain") else "")
+                 + f'</div>')
+                for t in core)
             st.markdown(f'<div class="gloss-grid">{rows}</div>', unsafe_allow_html=True)
         st.caption(f"简略版仅展示各分组的⭐核心术语；完整 {total} 条术语表请切换到「标准版」。")
         return
