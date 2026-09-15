@@ -1297,65 +1297,26 @@ def page_home():
 
     st.markdown('<div class="sec-title" style="font-size:1.12rem;">能力二 · Screen 智能荐股（筛选树 · 三层结构）</div>', unsafe_allow_html=True)
 
-    def _h_layer(title, pro, plain, color="#4A6FD4"):
-        return (f'<div class="step" style="border-left-color:{color};">'
-                f'<b>{title}</b><br>'
-                f'<span style="color:#1E3A6E;font-size:.86rem;font-weight:600;">📘 专业讲解</span><br>'
-                f'<span style="color:#44506A;font-size:.9rem;">{pro}</span><br>'
-                f'<span style="color:#1E7A4D;font-size:.86rem;font-weight:600;">🗣 大白话</span><br>'
-                f'<span style="color:#3A6B4A;font-size:.9rem;">{plain}</span>'
-                f'</div>')
+    def _pill(s):
+        return f'<span style="display:inline-block;background:#EEF3FD;border:1px solid #D8E1F5;color:#2E4A7D;border-radius:999px;font-size:.78rem;padding:2px 10px;margin:0 6px 6px 0;">{s}</span>'
 
-    def _h_sub(label, plain, color="#9DB0DE"):
-        return (f'<div class="step" style="border-left-color:{color};margin-left:18px;">'
-                f'<b style="font-size:.9rem;">{label}</b><br>'
-                f'<span style="color:#3A6B4A;font-size:.85rem;">🗣 大白话：{plain}</span>'
-                f'</div>')
-
-    # 1. 用户输入
-    st.markdown(_h_layer("1. 用户输入",
-        "用户在前端选定目标行业（白酒 / 红利 / 贵金属 / 宏观）与风险偏好（保守 / 平衡 / 进取）。偏好被编码为筛选约束（如保守→要求高股息、低波动），作为后续四维特征加权的依据。",
-        "你选好「看哪个行业、能承受多大风险」。系统把偏好翻译成筛选条件，后面打分就按这个来。"),
-        unsafe_allow_html=True)
-
-    # 2. 数据获取层
-    st.markdown(_h_layer("2. 数据获取层",
-        "流水线最前端的「原料备齐」阶段：① 实时行情获取个股最新价 / 涨跌幅 / 成交量；② 意图解析把行业 + 偏好映射为结构化筛选条件；③ 股票池构建按行业过滤 + 基础门槛（市值、是否 ST）圈定候选子集；④ 个股评论抓取股吧 / 论坛评论，为情绪面特征备料。",
-        "先把原料备齐——拉实时股价、弄明白你想要啥、圈定一个候选小圈子、再把股民评论扒下来。"),
-        unsafe_allow_html=True)
-    for t, n in [
-        ("（1）实时行情获取", "把每只股票此刻的报价、涨跌幅、成交量这些「盘面数字」实时拉回来"),
-        ("（2）意图解析", "把你选的「行业 + 能承受多大风险」翻译成机器能直接执行的筛选条件"),
-        ("（3）股票池构建", "先按行业圈一块地，再设道门槛（市值够大、不是 ST 垃圾股），只留够格的候选"),
-        ("（4）个股评论抓取", "把股吧、论坛里散户的吐槽和吹捧扒下来，给后面「情绪」这项打分备料"),
-    ]:
-        st.markdown(_h_sub(t, n), unsafe_allow_html=True)
-
-    # 3. 四维特征层
-    st.markdown(_h_layer("3. 四维特征层",
-        "对股票池每只候选做四维度特征提取，拼成个股画像：① 基本面（营收 / 净利 / 毛利率 / ROE / 估值分位）；② 技术面（均线 / MACD / 量价形态）；③ 情绪面（股吧评论情感极性与热度）；④ 行业面（行业景气度 / 政策催化 / 上下游位置）。四维度解耦，便于分别解释与加权。",
-        "给每只候选股票做「四体检」——财报健不健康、技术图形强不强、股民情绪热不热、所在行业景气不景气。"),
-        unsafe_allow_html=True)
-    for t, n in [
-        ("（1）基本面特征", "翻财报看家底：赚不赚钱、毛利高不高、ROE 硬不硬、估值贵不贵"),
-        ("（2）技术面特征", "看 K 线和指标：均线怎么排、MACD 金叉还是死叉、量价配不配合"),
-        ("（3）情绪面特征", "数股吧里看涨的多还是看跌的多，大家情绪热不热"),
-        ("（4）行业面特征", "看这块行业景气不景气、有没有政策利好、在产业链里占啥位置"),
-    ]:
-        st.markdown(_h_sub(t, n), unsafe_allow_html=True)
-
-    # 4. 汇聚决策层
-    st.markdown(_h_layer("4. 汇聚决策层",
-        "决策收口阶段：① 四维特征汇聚成个股画像；② LLM 以资深分析师视角对每只打 0–100 分（如茅台 91.2）；③ 生成推荐标的 + 可解释推荐理由与分析师观点；④ 校验与反思做一致性自检与风险提示，声明模拟数据、不构成投资建议。",
-        "汇总打分挑状元——把四张体检单合成总分排名，挑前几名写清「为什么推荐」，最后附「投资有风险、这是模拟数据」。"),
-        unsafe_allow_html=True)
-    for t, n in [
-        ("（1）四维特征汇聚", "把上面四张体检单拼成一份完整的个股画像"),
-        ("（2）LLM综合评分", "请 AI 以老分析师的视角，给每只股票打 0–100 分排座次"),
-        ("（3）分析师观点与推荐理由", "挑出分数高的标的，写清「为什么值得关注」"),
-        ("（4）校验与反思", "自己先复查一遍前后矛盾没，再附上风险提示：这是模拟数据、别当真投资建议"),
-    ]:
-        st.markdown(_h_sub(t, n), unsafe_allow_html=True)
+    layers = [
+        ("1. 用户输入", "选定行业与风险偏好，作为筛选与打分依据",
+         ["白酒 / 红利 / 贵金属 / 宏观", "保守 / 平衡 / 进取"]),
+        ("2. 数据获取层", "备齐原料：行情、意图、候选池、股民评论",
+         ["实时行情获取", "意图解析", "股票池构建", "个股评论抓取"]),
+        ("3. 四维特征层", "给每只候选做四维度「体检」拼成个股画像",
+         ["基本面", "技术面", "情绪面(FinBERT)", "行业面"]),
+        ("4. 汇聚决策层", "汇总打分、生成推荐与理由、附风险提示",
+         ["四维特征汇聚", "LLM 综合评分", "分析师观点与推荐理由", "校验与反思"]),
+    ]
+    for title, summary, subs in layers:
+        _pills = "".join(_pill(s) for s in subs)
+        st.markdown(
+            f'<div class="step" style="border-left-color:#4A6FD4;">'
+            f'<b>{title}</b> <span style="color:#6B768F;font-size:.85rem;">— {summary}</span>'
+            f'<div style="margin-top:8px;">{_pills}</div></div>',
+            unsafe_allow_html=True)
 
     st.markdown('<div class="sec-title">版本迭代</div><div class="sec-sub">Fin 1.0 → Fin 3.0 持续进化</div>', unsafe_allow_html=True)
     st.markdown("""
