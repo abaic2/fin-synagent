@@ -28,6 +28,14 @@ from kb import (
 import collections
 import statistics
 
+# 重排器三路对照实验结果（2026-09-15 实测落盘，随应用一同部署；缺失时页面自动跳过该区块）
+_RERANK_EXP_PATH = os.path.join(os.path.dirname(__file__), "rerank_experiment.json")
+try:
+    with open(_RERANK_EXP_PATH, encoding="utf-8") as _rf:
+        RERANK_EXP = json.load(_rf)
+except Exception:
+    RERANK_EXP = None
+
 
 # 构建指纹：运行时读取 git 短哈希，部署后可在页脚核对线上版本是否与本地一致
 def _app_build():
@@ -3097,11 +3105,11 @@ INTERVIEW_TECH_RAG = [
     ("什么是模型幻觉？产生原因是什么？如何抑制？",
      "幻觉是大模型生成看似合理但与事实不符内容的现象。\n\n**典型表现**：① 编造事实（把不存在的论文、新闻、数据说成真的）；② 张冠李戴（把 A 的结论安到 B 头上）；③ 虚构引用。\n\n**原因**：语言流畅性优先于真实性；缺少实时知识核对机制。\n\n**本项目对策**：RAG 知识库约束回答依据 + Search Agent 联网检索 + Verify Agent 事实校验，输出与网络数据、知识库数据双重比对。", True),
     ("RAG 中常见的文档切分（Chunking）策略有哪些？各有什么优缺点？",
-     "① **固定长度切分**（按字符/token 滑动窗口）：实现简单、长度可控，但容易切断语义（一句话被拆两半）；② **按句子/段落切分**：保留自然边界，但长短不均；③ **语义切分**（本项目采用）：按标题层级 + 同主题聚合，把同一小节作为一整个 chunk（≤520 字），语义完整、检索命中更准，缺点是对无标题文档要回退按页切分。\n\n**本项目权衡**：语义切分 + 中文占比≥45% 过滤双语年报的英文页眉噪声，最终 20297 → 13276 个高质量 chunk，召回质量明显提升。"),
+     "① **固定长度切分**（按字符/token 滑动窗口）：实现简单、长度可控，但容易切断语义（一句话被拆两半）；② **按句子/段落切分**：保留自然边界，但长短不均；③ **语义切分**（本项目采用）：按标题层级 + 同主题聚合，把同一小节作为一整个 chunk（≤520 字），语义完整、检索命中更准，缺点是对无标题文档要回退按页切分。\n\n**本项目权衡**：语义切分 + 中文占比≥45% 过滤双语年报的英文页眉噪声，最终从原始文本块收敛到 12594 个高质量 chunk，召回质量明显提升。"),
     ("为什么选 bge 这类稠密向量模型做 Embedding？和 BM25 稀疏检索怎么选？",
      "稠密向量（bge / 检索式 BERT）能把语义相近但字面不同的句子映射到近邻空间，理解「降息」与「货币政策宽松」的关联；BM25 基于词面匹配，对同义改写、专业术语泛化差。\n\n本项目中文金融场景用 **BAAI/bge-small-zh-v1.5**（512 维，中文 SOTA 级）；生产查询端建议加 bge 专用检索指令前缀提升召回。实际落地常做 **混合检索（稠密 + BM25 召回再融合）** 兼顾字面与语义。"),
     ("RAG 检索阶段为什么用余弦相似度？如何进一步提升检索召回与精度？",
-     "向量已做 L2 归一化（normalize_embeddings），余弦相似度等价于点积，计算快且不受向量长度影响。\n\n**提升手段**：① 查询改写 / HyDE 假设性回答；② **重排（Rerank）**：向量召回 Top-K×N 后用交叉编码器精排取 Top-K；③ **metadata 过滤**（本项目按行业路由到对应 collection 缩小域）；④ 多路召回融合。本项目查询端先按问题所属行业路由到 macro/baijiu/dividend/precious 之一，再做 Top-3 余弦检索。"),
+     "向量已做 L2 归一化（normalize_embeddings），余弦相似度等价于点积，计算快且不受向量长度影响。\n\n**提升手段**：① 查询改写 / HyDE 假设性回答；② **重排（Rerank）**：向量召回 Top-K×N 后用交叉编码器精排取 Top-K；③ **metadata 过滤**（本项目按行业路由到对应 collection 缩小域）；④ 多路召回融合。本项目查询端先按问题所属行业路由到 macro/baijiu/dividend/precious 之一，再做 Top-100 余弦召回 → 重排取 Top-5（⚠️ 当前重排后端为已知次优的 late-interaction，详见知识库页「重排器三路对照实验」）。"),
     ("RAG 和微调（Fine-tuning）各自解决什么问题？什么场景该用哪个？",
      "**RAG 解决「知识」问题**——让模型访问最新/私域/外部知识、抑制幻觉、答案可溯源，适合知识频繁更新、需引用出处的场景（如投顾研报问答）。**微调解决「能力/风格」问题**——让模型学会特定任务格式、专业口吻、领域推理，适合固定任务、低延迟、风格一致。\n\n**经验法则：先 RAG 后微调**；知识类优先 RAG，能力类才上微调。本项目两者结合：RAG 注入行业知识 + 星火 SFT 微调强化「投资」语义捕捉与金融专业性。"),
     ("如何评估一个 RAG 系统的效果？有哪些关键指标？",
@@ -3109,7 +3117,7 @@ INTERVIEW_TECH_RAG = [
     ("RAG 系统如何保证答案的「可追溯 / 可引用」？",
      "核心是把检索命中的**片段元数据（来源文件名、页码、章节）**一并回传，生成时在答案中标注引用，如「（来源：贵州茅台 2023 年报 p.23）」。\n\n本项目在页面展示每一条命中都带 source / page / 相似度，知识库页还提供「相似度置信度分布」与「Recall@5 / NDCG@5 / 精确 chunk 命中率」等标准 IR 指标，让评审直接看到检索是否命中正确文档集合，实现端到端可溯源。"),
     ("什么是 RAG 的「上下文污染 / 噪声」问题？如何缓解？",
-     "Top-K 召回里混进不相关片段（噪声）会干扰生成、甚至被模型当成事实引用，称为上下文污染。\n\n**缓解手段**：① 提高切分质量（本项目语义切分 + 中文占比≥45% 过滤，13276 高质量 chunk）；② 重排（Reranker）精筛；③ 按行业路由到对应 collection 缩小域；④ 提示词约束「仅依据高相似度片段作答、无依据时说明未知」。本项目 Consult 检索即先路由再 Top-5 余弦检索。"),
+     "Top-K 召回里混进不相关片段（噪声）会干扰生成、甚至被模型当成事实引用，称为上下文污染。\n\n**缓解手段**：① 提高切分质量（本项目语义切分 + 中文占比≥45% 过滤，12594 高质量 chunk）；② 重排（Reranker）精筛；③ 按行业路由到对应 collection 缩小域；④ 提示词约束「仅依据高相似度片段作答、无依据时说明未知」。本项目 Consult 检索即先路由到单库、再 Top-100 余弦召回并重排取 Top-5。"),
     ("向量数据库除了 Chroma 还有哪些？如何选型？",
      "主流还有 **FAISS**（Meta，高性能内存索引）、**Milvus / Zilliz**（分布式、大规模）、**Qdrant / Weaviate**（带 metadata 过滤与混合检索）、**pgvector**（PostgreSQL 插件，便于与业务库同栈）。\n\n**选型看规模**：原型/单机演示用 Chroma 最轻；亿级向量、需高并发与多租户选 Milvus；已有 PG 栈选 pgvector。本项目 Demo 用 Chroma 已足够，且无外部依赖、可随包部署。"),
 ]
@@ -3455,8 +3463,8 @@ def render_kb():
          f'= {eval_overall.get("ndcg@5",0):.3f}：综合「相关程度」与「排名位置」，越接近 1 越精确的结果越集中在最前。',
          "≥0.88"),
         ("精确 chunk 命中率@5", "gold 源 chunk 本身是否进入 Top-5，衡量排序特异性（是否把最该出现的那一段排出来）", "0 ~ 1（越高越好）",
-         f'= {eval_overall.get("exact_chunk_recall@5",0):.1%}：约 {eval_overall.get("exact_chunk_recall@5",0):.0%} 的查询能精确召回源片段；偏低提示通用模板段常被排在具体段落之前，属可优化重排缺陷。',
-         "≥0.50（理想重排后可达）"),
+         f'= {eval_overall.get("exact_chunk_recall@5",0):.1%}：约 {eval_overall.get("exact_chunk_recall@5",0):.0%} 的查询能精确召回源片段；偏低提示通用模板段常被排在具体段落之前，属可优化重排缺陷。⚠️ 注意：当前生效的重排后端（late-interaction）是已知次优的退路——三路对照显示真 cross-encoder 更强（见下方「重排器三路对照实验」）。',
+         "≥0.50（换成 cross-encoder 并优化召回后可逼近）"),
         ("Top-5 来源覆盖数", "单个查询 Top-5 平均覆盖的不同权威来源（PDF）数量，反映证据多样性", "1 ~ 5（一般）",
          f'= {_cov:.2f}：平均每个答案证据来自 {_cov:.1f} 个不同文档，越高越不易受单一来源偏差影响。',
          "≥2.20（证据充分且多元）"),
@@ -3488,7 +3496,7 @@ def render_kb():
     """, unsafe_allow_html=True)
     st.caption(
         f"理想目标列给出「工程上确可追求」的达标数值（非本次评测实测值，略高于真实值）。本 benchmark 采用标准 IR 口径（实体/文档级相关性，与 BEIR / MS MARCO / RAGAS 同源）：Recall@5≥0.90、Precision@5≥0.85、MRR≥0.88、NDCG@5≥0.88 为优秀 RAG 典型水平。"
-        f"当前主要短板是「精确 chunk 命中率@5」仅约 {eval_overall.get('exact_chunk_recall@5',0):.0%}——gold 源片段常被通用模板段（如审计报告）压到 Top-5 之外；可通过「交叉编码器重排」「更强中文嵌入（bge-large / 星火 Embedding）」「按公司而非仅按行业分桶」「注入难负样本微调」等手段显著提升。"
+        f"当前主要短板是「精确 chunk 命中率@5」仅约 {eval_overall.get('exact_chunk_recall@5',0):.0%}——gold 源片段常被通用模板段（如审计报告）压到 Top-5 之外。这个短板要分两层看：① **候选池内部**还有空间——当前上线的 late-interaction 是次优退路，三路对照显示真 cross-encoder 更强（下方「重排器三路对照实验」）；② **候选池外部**是天花板——约 63% 的 gold 压根不在 Top-100 里，任何重排器都够不到，必须靠「更强/领域化中文嵌入（bge-large / 星火 Embedding）」「查询改写让 gold 进得了候选」「按公司而非仅按行业分桶」「更细粒度切分」等手段抬高覆盖率。"
         f"Top-5 平均余弦相似度目标 0.70（≥0.68 即可），来源覆盖目标 2.20 可显著降低单源偏差。当前真实值已反映系统真实水平，叠加上述优化即可逼近理想线。"
     )
     st.caption(
@@ -3532,7 +3540,7 @@ def render_kb():
         st.markdown('<div class="sec-title" style="font-size:1.05rem;margin-top:6px;">① 离线建库（Offline）</div>', unsafe_allow_html=True)
         _n_doc = stats.get("total_docs", 0)
         _n_chunk = stats.get("total_chunks", 0)
-        _n_raw = round(_n_chunk * 4736 / 3329)   # 保持与历史一致的过滤比例(~70.3%)
+        _n_raw = round(_n_chunk * 1.55)   # 原始块数约为合格 chunk 的 1.55 倍（抽样口径）
         _bj_chunk = stats.get("collections", {}).get("白酒", {}).get("chunks", 0)
         for t, d, eg in [
             ("语料收集", f"{_n_doc} 份权威 PDF 按 4 个行业分目录归集：宏观（央行货币政策/金融稳定报告）、白酒（茅台/五粮液/泸州老窖等龙头年报与公告）、红利（中证红利成分股年报+分红预案）、贵金属（黄金/铜龙头年报 + 世界黄金协会报告）。信源以央行官网公开披露与巨潮信息网（cninfo）公告直链为主，全部公开权威、可溯源、便于定期增量更新。",
@@ -3554,8 +3562,8 @@ def render_kb():
              "『茅台批价走势』→ baijiu；『央行降准』→ macro"),
             ("查询向量化", "用与建库完全相同的 bge 模型对 query 编码，并按 bge 官方建议拼接检索指令前缀『为这个句子生成表示以用于检索相关文章：』，让查询向量更贴近『被检索文档』的分布（bge 在指令微调时即如此训练），可显著提升召回质量；生产环境指令前缀与离线入库保持一致即可。",
              "query = 指令前缀 + 『白酒批价走势』"),
-            ("相似度检索", "在目标 collection 内做余弦相似度 Top-3 召回，相似度 = 1 − cosine 距离（Chroma 存的是距离，取补得相似度）。本知识库规模小、块质量高，Top-3 已能覆盖问题所需事实；如需更高精度可叠加交叉编码器（cross-encoder）重排或提高 K 再做截断。",
-             "Top-3：[0.662]茅台p42 [0.611]五粮液p38 [0.584]泸州老窖p41"),
+            ("相似度检索 + 重排", "先在目标 collection 内做余弦相似度召回 Top-100（相似度 = 1 − cosine 距离；Chroma 存的是距离，取补才是相似度）。之所以召回 100 再截断，是因为同一家公司上百个段落高度同质，纯向量打分容易把通用模板段排在具体段之前，需要给重排器留出修正空间。随后重排取 Top-5——⚠️ 但当前生效的重排后端是 late-interaction（cross-encoder 因缓存实为 ONNX 格式、CrossEncoder 加载失败而降级），三路对照显示它比真 cross-encoder 次一档，属已知次优。",
+             "余弦 Top-100 → 重排 Top-5：[0.662]茅台p42 [0.611]五粮液p38 [0.584]泸州老窖p41"),
             ("Prompt 拼接", "系统指令明确约束：『你是金融投顾专家，仅依据【参考资料】作答，每条结论须标注来源 PDF 名称与页码，不得编造、不得超范围』。检索片段与原始问题按固定模板拼接为增强提示词再送入大模型。约束式 Prompt 是抑幻觉的第一道闸——模型被强制『看着资料说话』。",
              "『你是金融投顾专家，仅依据【参考资料】作答，每条结论标注 PDF 名+页码』"),
             ("生成 + 信源标注", "LLM 基于增强提示词生成答案，并在关键结论后回写『[来源：XXX.pdf pNN]』，实现逐条可溯源；Consult 流程还会再经 Verify Agent 把答案与知识库/联网数据二次比对，进一步压低幻觉率。用户在界面能看到命中片段与相似度，信任来自『可解释 + 可溯源』。",
@@ -3568,6 +3576,68 @@ def render_kb():
 res = coll.query(query_embeddings=[qe], n_results=3,
                  include=["documents", "metadatas", "distances"])
 sim = 1 - res["distances"][0][0]      # 余弦相似度（cosine 距离取补）''', language="python")
+
+    # 四·补 · 重排器三路对照实验（2026-09-15 实测）
+    # 数据来源：fin_synagent/rerank_experiment.json（由 exp_ce_stageA.py / exp_ce_stageB.py 实跑产出）
+    if RERANK_EXP:
+        _rov = RERANK_EXP.get("overall", {})
+        _rpi = RERANK_EXP.get("per_industry", {})
+        st.markdown(
+            '<div class="sec-title" style="font-size:1.1rem;margin-top:26px;">重排器三路对照实验（2026-09-15）</div>'
+            '<div class="sec-sub">结论写在前面：<b>当前生效的重排后端（late-interaction）是次优方案</b>'
+            '——它是 cross-encoder 加载失败时的退路，而不是优选。'
+            '下表为「同一批查询、同一个 Top-100 候选池、同一套命中判定口径」下，<b>只更换最后一步排序器</b>的受控对照。</div>',
+            unsafe_allow_html=True,
+        )
+        _rrows = []
+        for _ri, _rv in _rpi.items():
+            _rrows.append({
+                "行业": _ri, "查询数": _rv.get("n"),
+                "A · 纯 bi-encoder（基线）": f'{_rv.get("A_bi", 0):.1%}',
+                "B · late-interaction（当前上线）": f'{_rv.get("B_late", 0):.1%}',
+                "C · 真 cross-encoder": f'{_rv.get("C_ce", 0):.1%}',
+            })
+        _rrows.append({
+            "行业": "总体", "查询数": _rov.get("n"),
+            "A · 纯 bi-encoder（基线）": f'{_rov.get("A_bi", 0):.1%}',
+            "B · late-interaction（当前上线）": f'{_rov.get("B_late", 0):.1%}',
+            "C · 真 cross-encoder": f'{_rov.get("C_ce", 0):.1%}',
+        })
+        st.dataframe(pd.DataFrame(_rrows), use_container_width=True, hide_index=True)
+        st.caption(
+            f"指标为「精确命中源片段@5」。三路均为 {_rov.get('n', 0)} 条查询（每行业 25 条，确定性等距抽样）。"
+            f"总体：纯向量 {_rov.get('A_bi', 0):.1%} → late-interaction {_rov.get('B_late', 0):.1%} → "
+            f"真 cross-encoder {_rov.get('C_ce', 0):.1%}，且<b>四个行业的排序完全一致</b>（C ≥ B ≥ A，无一例外）。"
+            "上线方案待全量重跑确认后再替换。"
+        , unsafe_allow_html=True)
+        with st.expander("为什么会上线一个次优方案？——选型复盘、实验设计与必须声明的局限"):
+            st.markdown(
+                "**① 复盘：当初的选型理由站不住**\n\n"
+                "当时不用 cross-encoder，写在备注里的理由是「HF 下载太慢、零额外下载更实际」。"
+                "**但那是环境约束，不是技术判断**——把它写成结论，等于让一个偶然的工程限制冒充技术判断。\n\n"
+                "**② 模型其实可用，只是格式不对**\n\n"
+                "缓存 `models--BAAI--bge-reranker-base/` 里实际是 **ONNX 格式**（protobuf 头，含 pytorch / roberta 节点），"
+                "而 `sentence_transformers.CrossEncoder` 只按 `model.safetensors` / `pytorch_model.bin` 查找，**必然加载失败**。"
+                "改走 `onnxruntime.InferenceSession` 直接推理即可绕开（输入 `input_ids` + `attention_mask`，"
+                "输出 `logits (batch,1)`，实测约 17.9 ms/对 @ 4 线程 CPU）。\n\n"
+                "**③ 实验设计：只换最后一步排序器**\n\n"
+                "同一批查询、同一个 bi-encoder Top-100 候选池、同一套 `(source, page)` 命中判定口径，"
+                "唯一变量是「谁来排这 100 个候选」。\n\n"
+                "**④ 局限（讲结论时必须一并交代）**\n\n"
+                "- **样本小**：n=100（每行业 25 条）。10% 量级的命中率在 n=100 下 95% 置信区间约 ±6pt，**绝对幅度不可外推**；\n"
+                "- 要升级为主指标，需用 cross-encoder 全量重跑 `build_retrieval_eval.py`"
+                "（约 27.5 万候选对，CPU 预计 1.5 小时以上）；\n"
+                "- 判定口径 `(source, page)` 比主指标按 `chunk_id` 判定宽松，三路一致故**可作相对比较**，"
+                "但**不可与上方 7.6% 直接对比**；\n"
+                "- C 路按 256 token 截断输入，可能轻微低估 cross-encoder。\n\n"
+                "**⑤ 但方向是稳的**\n\n"
+                "四个行业无一例外、排序完全一致；且在 B 与 A 全部为零的两个行业（红利、贵金属）上，"
+                "cross-encoder 仍能捞出 gold——说明它在建模更细的 query–doc 交互，而不是简单放大相似度。\n\n"
+                "**⑥ 与「覆盖率天花板」的关系（两个层次，并不矛盾）**\n\n"
+                "- **候选池内部**：换更强的重排器就能拿到（本实验的 6% → 17%），属二阶优化；\n"
+                "- **候选池外部**：约 63% 的 gold 压根不在 Top-100 里，任何重排器都够不到，"
+                "必须靠提高检索覆盖率（换更强 embedding / 查询改写 / 更细切分）。"
+            )
 
     # 五、RAG 评测查询集（自建 benchmark · chunk 反向生成）
     # 数据来源：kb_data.json 的 retrieval_gold（行业 → 查询 → 黄金段落元数据）。
@@ -3612,7 +3682,7 @@ sim = 1 - res["distances"][0][0]      # 余弦相似度（cosine 距离取补）
                 columns=["查询", "目标实体(qrels)", "黄金来源", "黄金段落", "黄金排名", "Top-5召回"],
             )
             st.dataframe(_df, use_container_width=True, hide_index=True)
-    st.caption("本清单即上文 Recall@5 / NDCG@5 / 精确chunk命中率@5 等指标的评测语料：查询由语料自身生成、qrels 为来源主体，完全无需人工标注。黄金段落未进 Top-5 的查询越多，说明检索器越倾向召回通用模板段而非具体事实段——与精确 chunk 命中率指标相互印证，也指明后续用 cross-encoder 重排或难负样本微调的优化方向。")
+    st.caption("本清单即上文 Recall@5 / NDCG@5 / 精确chunk命中率@5 等指标的评测语料：查询由语料自身生成、qrels 为来源主体，完全无需人工标注。黄金段落未进 Top-5 的查询越多，说明检索器越倾向召回通用模板段而非具体事实段——与精确 chunk 命中率指标相互印证，也指明了优化方向：短期换真 cross-encoder 重排（见上方对照实验），中期换更强 embedding / 查询改写以抬高检索覆盖率。")
 
     # 六、RAG 生成质量评价指标（Generation Metrics · RAGAS 对齐）
     # 与上方检索指标配套，补齐 RAG 评测的「生成」一半：忠实度 / 答案相关性 / 上下文利用率。

@@ -1,0 +1,44 @@
+{
+  "title": "重排器三路对照实验",
+  "generated": "2026-09-15",
+  "purpose": "验证「两段式检索的第二段（重排器）到底该选谁」——为 2026-09-12 版上线时因模型未下载全而临时选用的 late-interaction 补做一次受控对照。",
+  "metric": "精确命中源片段@5（Top-5 是否含 gold 源段落）",
+  "matching_note": "三路使用完全一致的 (source, page) 代理口径判定命中；该口径比线上主指标（按 chunk_id 精确判定）略宽松，因此绝对值不可与 headline 的 exact_chunk_recall@5=0.0759 直接对比，只能用于三路之间的相对比较。",
+  "sample": {
+    "strategy": "确定性等距抽样（而非随机），保证可复现",
+    "n_per_industry": 25,
+    "n_total": 100,
+    "industries": ["白酒", "红利", "贵金属", "宏观"],
+    "note": "n=100 时 10% 命中率的 95% 置信区间约 ±6pt，绝对幅度不可外推；但三路排序在四个行业上完全一致，方向性结论稳定。"
+  },
+  "backends": {
+    "A": "纯 bi-encoder Top-5（无重排，基线）",
+    "B": "hybrid 重排：0.6 × bi-encoder 余弦 + 0.4 × late-interaction（ColBERT 式 MaxSim）",
+    "C": "真 cross-encoder：BAAI/bge-reranker-base（ONNX 推理），对同一批 Top-100 候选重排取 Top-5"
+  },
+  "overall": {
+    "n": 100,
+    "A_bi": 0.06,
+    "B_late": 0.1,
+    "C_ce": 0.17
+  },
+  "per_industry": {
+    "白酒": {"n": 25, "A_bi": 0.16, "B_late": 0.24, "C_ce": 0.32},
+    "红利": {"n": 25, "A_bi": 0.0, "B_late": 0.0, "C_ce": 0.12},
+    "贵金属": {"n": 25, "A_bi": 0.0, "B_late": 0.0, "C_ce": 0.08},
+    "宏观": {"n": 25, "A_bi": 0.08, "B_late": 0.16, "C_ce": 0.16}
+  },
+  "findings": [
+    "三路排序在四个行业上完全一致：cross-encoder ≥ late-interaction ≥ 纯向量基线。",
+    "真 cross-encoder 是三者中唯一能在「同源段落全部落在同一页」这类硬场景下把 gold 捞进 Top-5 的方案（红利 12%、贵金属 8%，另两路为 0）。",
+    "该结果说明：2026-09-12 版选用 late-interaction 的真实原因是「cross-encoder 模型当时没下载全（HF 限速 + 缓存里是 ONNX 格式无法被 CrossEncoder 加载）」，而不是它更优——它只是零下载的退路。",
+    "但它同时说明：即便换成最好的重排器，天花板仍由检索覆盖率决定（约 63% 的 gold 压根不在 Top-100 候选内），重排只能在候选池内部改善排序。"
+  ],
+  "limits": [
+    "样本仅 100 条查询，绝对增益幅度需全量重跑（2,754 条）确认后才可写入主指标。",
+    "B 取自 kb_data.json 中已落盘的 late-interaction hybrid 结果，A/C 为本次现场重算，三者同源同口径。",
+    "cross-encoder 以 ONNX 方式推理（原 PyTorch 权重缺失），打分等价但推理路径与 sentence-transformers 的 CrossEncoder 封装不同。",
+    "C 阶段按 256 token 截断输入以控制 CPU 内存，可能轻微低估 cross-encoder 的能力。"
+  ],
+  "next_step": "若要把此结论升级为主指标，需用 cross-encoder 全量重跑 build_retrieval_eval.py（约 27.5 万候选对，CPU 预计 1.5 小时以上），届时 exact_chunk_recall@5 会得到与 headline 同口径的真值。"
+}

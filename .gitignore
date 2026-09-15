@@ -1,3 +1,9 @@
 __pycache__/
 *.pyc
 .streamlit/secrets.toml
+
+# 施工 / 评测过程产物（不入库）
+_generation_partial*.json
+_wtest*.json
+kb_data.backup*.json
+_exp_*.json
