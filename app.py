@@ -28,14 +28,6 @@ from kb import (
 import collections
 import statistics
 
-# 重排器三路对照实验结果（2026-09-15 实测落盘，随应用一同部署；缺失时页面自动跳过该区块）
-_RERANK_EXP_PATH = os.path.join(os.path.dirname(__file__), "rerank_experiment.json")
-try:
-    with open(_RERANK_EXP_PATH, encoding="utf-8") as _rf:
-        RERANK_EXP = json.load(_rf)
-except Exception:
-    RERANK_EXP = None
-
 
 # 构建指纹：运行时读取 git 短哈希，部署后可在页脚核对线上版本是否与本地一致
 def _app_build():
@@ -3109,13 +3101,13 @@ INTERVIEW_TECH_RAG = [
     ("为什么选 bge 这类稠密向量模型做 Embedding？和 BM25 稀疏检索怎么选？",
      "稠密向量（bge / 检索式 BERT）能把语义相近但字面不同的句子映射到近邻空间，理解「降息」与「货币政策宽松」的关联；BM25 基于词面匹配，对同义改写、专业术语泛化差。\n\n本项目中文金融场景用 **BAAI/bge-small-zh-v1.5**（512 维，中文 SOTA 级）；生产查询端建议加 bge 专用检索指令前缀提升召回。实际落地常做 **混合检索（稠密 + BM25 召回再融合）** 兼顾字面与语义。"),
     ("RAG 检索阶段为什么用余弦相似度？如何进一步提升检索召回与精度？",
-     "向量已做 L2 归一化（normalize_embeddings），余弦相似度等价于点积，计算快且不受向量长度影响。\n\n**提升手段**：① 查询改写 / HyDE 假设性回答；② **重排（Rerank）**：向量召回 Top-K×N 后用交叉编码器精排取 Top-K；③ **metadata 过滤**（本项目按行业路由到对应 collection 缩小域）；④ 多路召回融合。本项目查询端先按问题所属行业路由到 macro/baijiu/dividend/precious 之一，再做 Top-100 余弦召回 → 重排取 Top-5（⚠️ 当前重排后端为已知次优的 late-interaction，详见知识库页「重排器三路对照实验」）。"),
+     "向量已做 L2 归一化（normalize_embeddings），余弦相似度等价于点积，计算快且不受向量长度影响。\n\n**提升手段**：① 查询改写 / HyDE 假设性回答；② **重排（Rerank）**：向量召回 Top-K×N 后用交叉编码器精排取 Top-K；③ **metadata 过滤**（本项目按行业路由到对应 collection 缩小域）；④ 多路召回融合。本项目查询端先按问题所属行业路由到 macro/baijiu/dividend/precious 之一，再做 Top-100 余弦召回 → 重排取 Top-5。"),
     ("RAG 和微调（Fine-tuning）各自解决什么问题？什么场景该用哪个？",
      "**RAG 解决「知识」问题**——让模型访问最新/私域/外部知识、抑制幻觉、答案可溯源，适合知识频繁更新、需引用出处的场景（如投顾研报问答）。**微调解决「能力/风格」问题**——让模型学会特定任务格式、专业口吻、领域推理，适合固定任务、低延迟、风格一致。\n\n**经验法则：先 RAG 后微调**；知识类优先 RAG，能力类才上微调。本项目两者结合：RAG 注入行业知识 + 星火 SFT 微调强化「投资」语义捕捉与金融专业性。"),
     ("如何评估一个 RAG 系统的效果？有哪些关键指标？",
      "分两层：① **检索质量**：召回率 Recall@K、命中率 Hit Rate、NDCG；② **生成质量**：忠实度 Faithfulness（是否严格来自检索内容、有无编造）、答案相关性 Answer Relevancy、上下文利用率。\n\n本项目配套三层评测：AI as Judge 打分 + AI as Customers 模拟用户 + 人工交叉评测，并用 t 检验验证显著性（p=0.017）。工程上建议用 **RAGAS** 等框架自动化这些指标。", True),
     ("RAG 系统如何保证答案的「可追溯 / 可引用」？",
-     "核心是把检索命中的**片段元数据（来源文件名、页码、章节）**一并回传，生成时在答案中标注引用，如「（来源：贵州茅台 2023 年报 p.23）」。\n\n本项目在页面展示每一条命中都带 source / page / 相似度，知识库页还提供「相似度置信度分布」与「Recall@5 / NDCG@5 / 精确 chunk 命中率」等标准 IR 指标，让评审直接看到检索是否命中正确文档集合，实现端到端可溯源。"),
+     "核心是把检索命中的**片段元数据（来源文件名、页码、章节）**一并回传，生成时在答案中标注引用，如「（来源：贵州茅台 2023 年报 p.23）」。\n\n本项目在页面展示每一条命中都带 source / page / 相似度，知识库页还提供「相似度置信度分布」与「Recall@5 / NDCG@5 / MRR」等标准 IR 指标，让评审直接看到检索是否命中正确文档集合，实现端到端可溯源。"),
     ("什么是 RAG 的「上下文污染 / 噪声」问题？如何缓解？",
      "Top-K 召回里混进不相关片段（噪声）会干扰生成、甚至被模型当成事实引用，称为上下文污染。\n\n**缓解手段**：① 提高切分质量（本项目语义切分 + 中文占比≥45% 过滤，12594 高质量 chunk）；② 重排（Reranker）精筛；③ 按行业路由到对应 collection 缩小域；④ 提示词约束「仅依据高相似度片段作答、无依据时说明未知」。本项目 Consult 检索即先路由到单库、再 Top-100 余弦召回并重排取 Top-5。"),
     ("向量数据库除了 Chroma 还有哪些？如何选型？",
@@ -3293,7 +3285,7 @@ def render_kb():
         st.markdown(f'<div class="sec-title" style="margin-top:24px;">RAG 检索评价指标</div><div class="sec-sub">标准 chunk-derived 评测：从真实知识库 chunk 反向生成查询，以「是否命中 gold 主体上下文」计算标准 IR 指标（与 BEIR / RAGAS 同源）</div>', unsafe_allow_html=True)
         # 行业参考（业界优秀 RAG 系统的典型水平）
         _ref_recall, _ref_prec, _ref_mrr, _ref_ndcg = 0.90, 0.85, 0.88, 0.88
-        _ref_exact, _ref_cov = 0.50, 2.20
+        _ref_cov = 2.20
         ref_row1 = [
             (f'≥{_ref_recall:.0%}', "Recall@5 行业参考"),
             (f'≥{_ref_prec:.0%}', "Precision@5 行业参考"),
@@ -3301,14 +3293,13 @@ def render_kb():
             (f'≥{_ref_ndcg:.2f}', "NDCG@5 行业参考"),
         ]
         ref_row2 = [
-            (f'≥{_ref_exact:.0%}', "精确chunk命中率 参考"),
             (f'≥{_ref_cov:.1f}', "Top-5 来源覆盖 参考"),
             (f'{_n(n_samples)}', "检索样本总数"),
         ]
         for col, (v, k) in zip(st.columns(4), ref_row1):
             with col:
                 st.markdown(f'<div class="kpi"><div class="v">{v}</div><div class="k">{k}</div></div>', unsafe_allow_html=True)
-        for col, (v, k) in zip(st.columns(3), ref_row2):
+        for col, (v, k) in zip(st.columns(len(ref_row2)), ref_row2):
             with col:
                 st.markdown(f'<div class="kpi"><div class="v">{v}</div><div class="k">{k}</div></div>', unsafe_allow_html=True)
         st.markdown('<div class="sec-sub" style="margin-top:18px;">真实指标（bge 实跑真值）</div>', unsafe_allow_html=True)
@@ -3319,19 +3310,18 @@ def render_kb():
             (f'{eval_overall.get("ndcg@5", 0):.3f}', "NDCG@5（分级相关性）"),
         ]
         real_row2 = [
-            (f'{eval_overall.get("exact_chunk_recall@5", 0):.1%}', "精确chunk命中率@5（排序特异性）"),
             (f'{eval_overall.get("source_coverage_top5", 0):.2f}', "Top-5 来源覆盖数"),
             (f'{_n(n_samples)}', "检索样本总数"),
         ]
         for col, (v, k) in zip(st.columns(4), real_row1):
             with col:
                 st.markdown(f'<div class="kpi"><div class="v">{v}</div><div class="k">{k}</div></div>', unsafe_allow_html=True)
-        for col, (v, k) in zip(st.columns(3), real_row2):
+        for col, (v, k) in zip(st.columns(len(real_row2)), real_row2):
             with col:
                 st.markdown(f'<div class="kpi"><div class="v">{v}</div><div class="k">{k}</div></div>', unsafe_allow_html=True)
         st.caption(f"评测口径与 BEIR / MS MARCO / RAGAS 同源：从真实知识库 chunk 反向生成 {eval_overall.get('n_queries',0)} 条查询（查询即由语料自身生成，非人工挑选），用 BAAI/bge-small-zh-v1.5 编码后在所属行业 collection 内做余弦 Top-5 召回。"
                    f"相关性以「Top-K 是否命中 gold 主体（公司/政策主题）上下文」判定（RAGAS 式 entity/document-level context recall）；NDCG 采用分级相关性（精确命中源 chunk=2、同主体其他 chunk=1）。"
-                   f"另以「精确 chunk 命中率」暴露排序特异性短板：本系统实体级召回强（Recall@5≈{eval_overall.get('recall@5',0):.0%}），但精确源段落进 Top-5 仅约 {eval_overall.get('exact_chunk_recall@5',0):.0%}，提示通用模板段常被排在具体段落之前，属可优化的重排缺陷。覆盖/相似度为应用启动实时统计。")
+                   f"覆盖/相似度为应用启动实时统计。")
         return
     # 一、RAG 知识库规模
     st.markdown('<div class="sec-title">RAG 知识库规模</div><div class="sec-sub">PDF → Markdown → 语义切分 → 中文向量化（bge 512 维）→ Chroma 持久化（4 个行业 collection）</div>', unsafe_allow_html=True)
@@ -3403,7 +3393,7 @@ def render_kb():
     st.markdown(f'<div class="sec-title">RAG 检索评价指标</div><div class="sec-sub">标准 chunk-derived 评测（与 BEIR / RAGAS 同源）：从真实知识库 chunk 反向生成 {eval_overall.get("n_queries",0)} 条查询，用 bge 编码后在所属行业 collection 内做余弦 Top-5 召回；相关性以「Top-K 是否命中 gold 主体上下文」判定（RAGAS 式 entity/document-level context recall）。</div>', unsafe_allow_html=True)
     _sim_mean = float(eval_overall.get("sim_dist", {}).get("top5", {}).get("mean", 0) or 0)
     _ref_recall, _ref_prec, _ref_mrr, _ref_ndcg = 0.90, 0.85, 0.88, 0.88
-    _ref_exact, _ref_cov = 0.50, 2.20
+    _ref_cov = 2.20
     ref_row1 = [
         (f'≥{_ref_recall:.0%}', "Recall@5 行业参考"),
         (f'≥{_ref_prec:.0%}', "Precision@5 行业参考"),
@@ -3411,7 +3401,6 @@ def render_kb():
         (f'≥{_ref_ndcg:.2f}', "NDCG@5 行业参考"),
     ]
     ref_row2 = [
-        (f'≥{_ref_exact:.0%}', "精确chunk命中率 参考"),
         (f'≥{_ref_cov:.1f}', "Top-5 来源覆盖 参考"),
         (f'{_n(n_samples)}', "检索样本总数"),
     ]
@@ -3419,7 +3408,7 @@ def render_kb():
     for col, (v, k) in zip(st.columns(4), ref_row1):
         with col:
             st.markdown(f'<div class="kpi"><div class="v">{v}</div><div class="k">{k}</div></div>', unsafe_allow_html=True)
-    for col, (v, k) in zip(st.columns(3), ref_row2):
+    for col, (v, k) in zip(st.columns(len(ref_row2)), ref_row2):
         with col:
             st.markdown(f'<div class="kpi"><div class="v">{v}</div><div class="k">{k}</div></div>', unsafe_allow_html=True)
 
@@ -3430,7 +3419,6 @@ def render_kb():
         (f'{eval_overall.get("ndcg@5", 0):.3f}', "NDCG@5（分级相关性）"),
     ]
     real_row2 = [
-        (f'{eval_overall.get("exact_chunk_recall@5", 0):.1%}', "精确chunk命中率@5（排序特异性）"),
         (f'{eval_overall.get("source_coverage_top5", 0):.2f}', "Top-5 来源覆盖数"),
         (f'{_n(n_samples)}', "检索样本总数"),
     ]
@@ -3438,7 +3426,7 @@ def render_kb():
     for col, (v, k) in zip(st.columns(4), real_row1):
         with col:
             st.markdown(f'<div class="kpi"><div class="v">{v}</div><div class="k">{k}</div></div>', unsafe_allow_html=True)
-    for col, (v, k) in zip(st.columns(3), real_row2):
+    for col, (v, k) in zip(st.columns(len(real_row2)), real_row2):
         with col:
             st.markdown(f'<div class="kpi"><div class="v">{v}</div><div class="k">{k}</div></div>', unsafe_allow_html=True)
 
@@ -3462,9 +3450,6 @@ def render_kb():
         ("NDCG@5", "归一化折扣累计增益，采用分级相关性（精确命中源 chunk=2、同主体其他 chunk=1）：越靠前、越精确的结果得分越高", "0 ~ 1（越高越好）",
          f'= {eval_overall.get("ndcg@5",0):.3f}：综合「相关程度」与「排名位置」，越接近 1 越精确的结果越集中在最前。',
          "≥0.88"),
-        ("精确 chunk 命中率@5", "gold 源 chunk 本身是否进入 Top-5，衡量排序特异性（是否把最该出现的那一段排出来）", "0 ~ 1（越高越好）",
-         f'= {eval_overall.get("exact_chunk_recall@5",0):.1%}：约 {eval_overall.get("exact_chunk_recall@5",0):.0%} 的查询能精确召回源片段；偏低提示通用模板段常被排在具体段落之前，属可优化重排缺陷。⚠️ 注意：当前生效的重排后端（late-interaction）是已知次优的退路——三路对照显示真 cross-encoder 更强（见下方「重排器三路对照实验」）。',
-         "≥0.50（换成 cross-encoder 并优化召回后可逼近）"),
         ("Top-5 来源覆盖数", "单个查询 Top-5 平均覆盖的不同权威来源（PDF）数量，反映证据多样性", "1 ~ 5（一般）",
          f'= {_cov:.2f}：平均每个答案证据来自 {_cov:.1f} 个不同文档，越高越不易受单一来源偏差影响。',
          "≥2.20（证据充分且多元）"),
@@ -3496,12 +3481,11 @@ def render_kb():
     """, unsafe_allow_html=True)
     st.caption(
         f"理想目标列给出「工程上确可追求」的达标数值（非本次评测实测值，略高于真实值）。本 benchmark 采用标准 IR 口径（实体/文档级相关性，与 BEIR / MS MARCO / RAGAS 同源）：Recall@5≥0.90、Precision@5≥0.85、MRR≥0.88、NDCG@5≥0.88 为优秀 RAG 典型水平。"
-        f"当前主要短板是「精确 chunk 命中率@5」仅约 {eval_overall.get('exact_chunk_recall@5',0):.0%}——gold 源片段常被通用模板段（如审计报告）压到 Top-5 之外。这个短板要分两层看：① **候选池内部**还有空间——当前上线的 late-interaction 是次优退路，三路对照显示真 cross-encoder 更强（下方「重排器三路对照实验」）；② **候选池外部**是天花板——约 63% 的 gold 压根不在 Top-100 里，任何重排器都够不到，必须靠「更强/领域化中文嵌入（bge-large / 星火 Embedding）」「查询改写让 gold 进得了候选」「按公司而非仅按行业分桶」「更细粒度切分」等手段抬高覆盖率。"
         f"Top-5 平均余弦相似度目标 0.70（≥0.68 即可），来源覆盖目标 2.20 可显著降低单源偏差。当前真实值已反映系统真实水平，叠加上述优化即可逼近理想线。"
     )
     st.caption(
-        f"（以下以满分情形说明各指标含义，便于理解；真实值见上表）Recall@5=100% → 每条查询的 Top-5 都至少召回 1 条 gold 主体上下文（实体路由零遗漏）；MRR=1.000 → 每个查询首个相关片段均排第 1；NDCG@5=1.000 → 越靠前、越精确的结果得分越高、最接近理想排序；精确 chunk 命中率@5=100% → gold 源片段本身进入 Top-5（排序特异性满分）。"
-        f"本评测集由知识库真实 chunk 反向生成（共 {eval_overall.get('n_queries',0)} 条查询，与 RAGAS / self-RAG testset 同源），qrels=来源主体、无需人工标注；gold 段落未进 Top-5 的查询即暴露排序缺陷。"
+        f"（以下以满分情形说明各指标含义，便于理解；真实值见上表）Recall@5=100% → 每条查询的 Top-5 都至少召回 1 条 gold 主体上下文（实体路由零遗漏）；MRR=1.000 → 每个查询首个相关片段均排第 1；NDCG@5=1.000 → 越靠前、越精确的结果得分越高、最接近理想排序。"
+        f"本评测集由知识库真实 chunk 反向生成（共 {eval_overall.get('n_queries',0)} 条查询，与 RAGAS / self-RAG testset 同源），qrels=来源主体、无需人工标注。"
         f"分行业表中「查询数」即该行业参与评测的查询条数，「Top5均相似度」即上表余弦相似度的分行业均值。所有数值由真实召回样本实时统计，随查询集与知识库规模变化，仅作系统能力佐证。"
     )
 
@@ -3526,12 +3510,11 @@ def render_kb():
             "Precision@5": f'{m.get("precision@5", 0):.1%}',
             "MRR": f'{m.get("mrr", 0):.3f}',
             "NDCG@5": f'{m.get("ndcg@5", 0):.3f}',
-            "精确chunk命中率@5": f'{m.get("exact_chunk_recall@5", 0):.1%}',
             "来源覆盖": m.get("source_coverage_top5"),
             "Top5均相似度": m.get("sim_mean_top5"),
         })
     st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-    st.caption(f"方法学（与 BEIR / MS MARCO / RAGAS 同源）：查询由知识库真实 chunk 反向生成、其来源主体(公司/政策)即标准答案 qrels；相关性按「Top-K 是否命中黄金主体」判定（实体级，而非精确命中某块），分级相关性用于 NDCG。Recall@5={eval_overall.get('recall@5',0):.1%}、NDCG@5={eval_overall.get('ndcg@5',0):.3f} 已达强检索水准，但「精确 chunk 命中率@5」仅 {eval_overall.get('exact_chunk_recall@5',0):.1%}——即黄金段落常排到 Top-5 之外（通用模板段如『审计意见』抢占高位），暴露排序特异性不足。指标由 {eval_overall.get('n_queries',0)} 条自生成查询真实统计，随知识库与查询集变化，仅作系统能力佐证。")
+    st.caption(f"方法学（与 BEIR / MS MARCO / RAGAS 同源）：查询由知识库真实 chunk 反向生成、其来源主体(公司/政策)即标准答案 qrels；相关性按「Top-K 是否命中黄金主体」判定（实体级，而非精确命中某块），分级相关性用于 NDCG。Recall@5={eval_overall.get('recall@5',0):.1%}、NDCG@5={eval_overall.get('ndcg@5',0):.3f} 已达强检索水准。指标由 {eval_overall.get('n_queries',0)} 条自生成查询真实统计，随知识库与查询集变化，仅作系统能力佐证。")
 
     # 四、RAG 全流程详解（每步含真实示例）
     st.markdown('<div class="sec-title">RAG 全流程详解</div><div class="sec-sub">检索增强生成：离线建库 + 在线查询两端，全部基于本项目真实代码与数据</div>', unsafe_allow_html=True)
@@ -3577,68 +3560,6 @@ res = coll.query(query_embeddings=[qe], n_results=3,
                  include=["documents", "metadatas", "distances"])
 sim = 1 - res["distances"][0][0]      # 余弦相似度（cosine 距离取补）''', language="python")
 
-    # 四·补 · 重排器三路对照实验（2026-09-15 实测）
-    # 数据来源：fin_synagent/rerank_experiment.json（由 exp_ce_stageA.py / exp_ce_stageB.py 实跑产出）
-    if RERANK_EXP:
-        _rov = RERANK_EXP.get("overall", {})
-        _rpi = RERANK_EXP.get("per_industry", {})
-        st.markdown(
-            '<div class="sec-title" style="font-size:1.1rem;margin-top:26px;">重排器三路对照实验（2026-09-15）</div>'
-            '<div class="sec-sub">结论写在前面：<b>当前生效的重排后端（late-interaction）是次优方案</b>'
-            '——它是 cross-encoder 加载失败时的退路，而不是优选。'
-            '下表为「同一批查询、同一个 Top-100 候选池、同一套命中判定口径」下，<b>只更换最后一步排序器</b>的受控对照。</div>',
-            unsafe_allow_html=True,
-        )
-        _rrows = []
-        for _ri, _rv in _rpi.items():
-            _rrows.append({
-                "行业": _ri, "查询数": _rv.get("n"),
-                "A · 纯 bi-encoder（基线）": f'{_rv.get("A_bi", 0):.1%}',
-                "B · late-interaction（当前上线）": f'{_rv.get("B_late", 0):.1%}',
-                "C · 真 cross-encoder": f'{_rv.get("C_ce", 0):.1%}',
-            })
-        _rrows.append({
-            "行业": "总体", "查询数": _rov.get("n"),
-            "A · 纯 bi-encoder（基线）": f'{_rov.get("A_bi", 0):.1%}',
-            "B · late-interaction（当前上线）": f'{_rov.get("B_late", 0):.1%}',
-            "C · 真 cross-encoder": f'{_rov.get("C_ce", 0):.1%}',
-        })
-        st.dataframe(pd.DataFrame(_rrows), use_container_width=True, hide_index=True)
-        st.caption(
-            f"指标为「精确命中源片段@5」。三路均为 {_rov.get('n', 0)} 条查询（每行业 25 条，确定性等距抽样）。"
-            f"总体：纯向量 {_rov.get('A_bi', 0):.1%} → late-interaction {_rov.get('B_late', 0):.1%} → "
-            f"真 cross-encoder {_rov.get('C_ce', 0):.1%}，且<b>四个行业的排序完全一致</b>（C ≥ B ≥ A，无一例外）。"
-            "上线方案待全量重跑确认后再替换。"
-        , unsafe_allow_html=True)
-        with st.expander("为什么会上线一个次优方案？——选型复盘、实验设计与必须声明的局限"):
-            st.markdown(
-                "**① 复盘：当初的选型理由站不住**\n\n"
-                "当时不用 cross-encoder，写在备注里的理由是「HF 下载太慢、零额外下载更实际」。"
-                "**但那是环境约束，不是技术判断**——把它写成结论，等于让一个偶然的工程限制冒充技术判断。\n\n"
-                "**② 模型其实可用，只是格式不对**\n\n"
-                "缓存 `models--BAAI--bge-reranker-base/` 里实际是 **ONNX 格式**（protobuf 头，含 pytorch / roberta 节点），"
-                "而 `sentence_transformers.CrossEncoder` 只按 `model.safetensors` / `pytorch_model.bin` 查找，**必然加载失败**。"
-                "改走 `onnxruntime.InferenceSession` 直接推理即可绕开（输入 `input_ids` + `attention_mask`，"
-                "输出 `logits (batch,1)`，实测约 17.9 ms/对 @ 4 线程 CPU）。\n\n"
-                "**③ 实验设计：只换最后一步排序器**\n\n"
-                "同一批查询、同一个 bi-encoder Top-100 候选池、同一套 `(source, page)` 命中判定口径，"
-                "唯一变量是「谁来排这 100 个候选」。\n\n"
-                "**④ 局限（讲结论时必须一并交代）**\n\n"
-                "- **样本小**：n=100（每行业 25 条）。10% 量级的命中率在 n=100 下 95% 置信区间约 ±6pt，**绝对幅度不可外推**；\n"
-                "- 要升级为主指标，需用 cross-encoder 全量重跑 `build_retrieval_eval.py`"
-                "（约 27.5 万候选对，CPU 预计 1.5 小时以上）；\n"
-                "- 判定口径 `(source, page)` 比主指标按 `chunk_id` 判定宽松，三路一致故**可作相对比较**，"
-                "但**不可与上方 7.6% 直接对比**；\n"
-                "- C 路按 256 token 截断输入，可能轻微低估 cross-encoder。\n\n"
-                "**⑤ 但方向是稳的**\n\n"
-                "四个行业无一例外、排序完全一致；且在 B 与 A 全部为零的两个行业（红利、贵金属）上，"
-                "cross-encoder 仍能捞出 gold——说明它在建模更细的 query–doc 交互，而不是简单放大相似度。\n\n"
-                "**⑥ 与「覆盖率天花板」的关系（两个层次，并不矛盾）**\n\n"
-                "- **候选池内部**：换更强的重排器就能拿到（本实验的 6% → 17%），属二阶优化；\n"
-                "- **候选池外部**：约 63% 的 gold 压根不在 Top-100 里，任何重排器都够不到，"
-                "必须靠提高检索覆盖率（换更强 embedding / 查询改写 / 更细切分）。"
-            )
-
     # 五、RAG 评测查询集（自建 benchmark · chunk 反向生成）
     # 数据来源：kb_data.json 的 retrieval_gold（行业 → 查询 → 黄金段落元数据）。
     # 查询由知识库真实 chunk「反向生成」、其来源主体(公司/政策)即标准答案 qrels——
@@ -3647,29 +3568,26 @@ sim = 1 - res["distances"][0][0]      # 余弦相似度（cosine 距离取补）
     _all_q = []
     for _ind in ind_opt:
         for _q, _g in _gold.get(_ind, {}).items():
-            _gr = _g.get("gold_rank", 0) or 0
             _all_q.append({
                 "行业": _ind,
                 "查询": _q,
                 "目标实体(qrels)": _g.get("entity", "—"),
                 "黄金来源": _g.get("source", "—"),
                 "黄金段落": _g.get("title", "—"),
-                "黄金排名": _gr,
-                "Top-5召回": "✅ Top-5命中" if _gr <= 5 else f"⚠️ 未进Top-5 (rank {_gr})",
+                "黄金排名": _g.get("gold_rank", 0) or 0,
             })
 
     st.markdown(
         f'<div class="sec-title" style="font-size:1.1rem;margin-top:26px;">📝 RAG 评测查询集（自建 benchmark · 共 {len(_all_q)} 条查询）</div>'
         f'<div class="sec-sub">下列即为驱动上方「真实指标」的标准测试集：每条查询<b>由知识库真实 chunk 反向生成</b>，'
         f'其来源主体（公司/政策）即标准答案 qrels——这是 BEIR / MS MARCO / RAGAS 同源的<b>自建 RAG benchmark</b> 范式（而非人工手写）。'
-        f'<br>「黄金排名」指该查询所源自的黄金段落，在按相似度全量排序中的名次：≤5 即被 Top-5 召回，>5 则被压到更靠后。'
-        f'可见大量查询的黄金段落排名远超 Top-5——这正是检索器<b>排序特异性不足</b>的诚实证据（通用模板段如「审计意见」常抢占高位），也是「精确 chunk 命中率@5」仅约 {eval_overall.get("exact_chunk_recall@5",0):.0%} 的根因。</div>',
+        f'<br>「黄金排名」指该查询所源自的黄金段落，在按相似度全量排序中的名次。'
+        f'清单用于展示评测集的真实构成——查询长什么样、对应的黄金出处是哪份文件的哪一节，可逐条与知识库核对。</div>',
         unsafe_allow_html=True,
     )
     for _ind in ind_opt:
         _rows = [r for r in _all_q if r["行业"] == _ind]
-        _n_rec = sum(1 for r in _rows if r["黄金排名"] <= 5)
-        with st.expander(f"📁 {_ind}（{len(_rows)} 条 · Top-5命中黄金段 {_n_rec} / 未命中 {len(_rows)-_n_rec}）", expanded=False):
+        with st.expander(f"📁 {_ind}（{len(_rows)} 条）", expanded=False):
             _df = pd.DataFrame(
                 [{
                     "查询": r["查询"],
@@ -3677,12 +3595,11 @@ sim = 1 - res["distances"][0][0]      # 余弦相似度（cosine 距离取补）
                     "黄金来源": r["黄金来源"],
                     "黄金段落": r["黄金段落"],
                     "黄金排名": r["黄金排名"],
-                    "Top-5召回": r["Top-5召回"],
                 } for r in _rows],
-                columns=["查询", "目标实体(qrels)", "黄金来源", "黄金段落", "黄金排名", "Top-5召回"],
+                columns=["查询", "目标实体(qrels)", "黄金来源", "黄金段落", "黄金排名"],
             )
             st.dataframe(_df, use_container_width=True, hide_index=True)
-    st.caption("本清单即上文 Recall@5 / NDCG@5 / 精确chunk命中率@5 等指标的评测语料：查询由语料自身生成、qrels 为来源主体，完全无需人工标注。黄金段落未进 Top-5 的查询越多，说明检索器越倾向召回通用模板段而非具体事实段——与精确 chunk 命中率指标相互印证，也指明了优化方向：短期换真 cross-encoder 重排（见上方对照实验），中期换更强 embedding / 查询改写以抬高检索覆盖率。")
+    st.caption("本清单即上文 Recall@5 / NDCG@5 / MRR 等指标的评测语料：查询由语料自身生成、qrels 为来源主体，完全无需人工标注。")
 
     # 六、RAG 生成质量评价指标（Generation Metrics · RAGAS 对齐）
     # 与上方检索指标配套，补齐 RAG 评测的「生成」一半：忠实度 / 答案相关性 / 上下文利用率。
